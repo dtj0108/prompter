@@ -114,3 +114,91 @@ enum DictationMode: String {
     case dictate
     case prompt
 }
+
+// MARK: - Tolerant decoding
+// Missing keys fall back to defaults instead of failing the whole file, so app
+// updates that add fields (or hand-edits that drop one) never wipe user data.
+
+extension Config {
+    private enum CodingKeys: String, CodingKey {
+        case apiKey, cleanupModel, promptModel, claudeCLIPath, dictationHotkey, promptHotkey
+        case llmCleanupEnabled, holdThresholdMs, pasteRestoreDelayMs, maxRecordingSec
+        case soundsEnabled, launchAtLogin
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Config()
+        apiKey = (try? c.decodeIfPresent(String.self, forKey: .apiKey)) ?? nil ?? d.apiKey
+        cleanupModel = (try? c.decodeIfPresent(String.self, forKey: .cleanupModel)) ?? nil ?? d.cleanupModel
+        promptModel = (try? c.decodeIfPresent(String.self, forKey: .promptModel)) ?? nil ?? d.promptModel
+        claudeCLIPath = (try? c.decodeIfPresent(String.self, forKey: .claudeCLIPath)) ?? nil ?? d.claudeCLIPath
+        dictationHotkey = (try? c.decodeIfPresent(String.self, forKey: .dictationHotkey)) ?? nil ?? d.dictationHotkey
+        promptHotkey = (try? c.decodeIfPresent(String.self, forKey: .promptHotkey)) ?? nil ?? d.promptHotkey
+        llmCleanupEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .llmCleanupEnabled)) ?? nil ?? d.llmCleanupEnabled
+        holdThresholdMs = (try? c.decodeIfPresent(Int.self, forKey: .holdThresholdMs)) ?? nil ?? d.holdThresholdMs
+        pasteRestoreDelayMs = (try? c.decodeIfPresent(Int.self, forKey: .pasteRestoreDelayMs)) ?? nil ?? d.pasteRestoreDelayMs
+        maxRecordingSec = (try? c.decodeIfPresent(Int.self, forKey: .maxRecordingSec)) ?? nil ?? d.maxRecordingSec
+        soundsEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .soundsEnabled)) ?? nil ?? d.soundsEnabled
+        launchAtLogin = (try? c.decodeIfPresent(Bool.self, forKey: .launchAtLogin)) ?? nil ?? d.launchAtLogin
+    }
+}
+
+extension DictEntry {
+    private enum CodingKeys: String, CodingKey { case id, phrase, soundsLike, note }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decodeIfPresent(UUID.self, forKey: .id)) ?? nil ?? UUID()
+        phrase = (try? c.decodeIfPresent(String.self, forKey: .phrase)) ?? nil ?? ""
+        soundsLike = (try? c.decodeIfPresent([String].self, forKey: .soundsLike)) ?? nil ?? []
+        note = (try? c.decodeIfPresent(String.self, forKey: .note)) ?? nil ?? ""
+    }
+}
+
+extension ContextStyle {
+    private enum CodingKeys: String, CodingKey { case id, name, appBundleIds, titleKeywords, instructions }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decodeIfPresent(String.self, forKey: .id)) ?? nil ?? "custom-\(UUID().uuidString.prefix(6).lowercased())"
+        name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? nil ?? "Context"
+        appBundleIds = (try? c.decodeIfPresent([String].self, forKey: .appBundleIds)) ?? nil ?? []
+        titleKeywords = (try? c.decodeIfPresent([String].self, forKey: .titleKeywords)) ?? nil ?? []
+        instructions = (try? c.decodeIfPresent(String.self, forKey: .instructions)) ?? nil ?? ""
+    }
+}
+
+extension StyleConfig {
+    private enum CodingKeys: String, CodingKey { case globalVoice, contexts }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        globalVoice = (try? c.decodeIfPresent(String.self, forKey: .globalVoice)) ?? nil ?? StyleConfig.default.globalVoice
+        contexts = (try? c.decodeIfPresent([ContextStyle].self, forKey: .contexts)) ?? nil ?? StyleConfig.default.contexts
+        if !contexts.contains(where: { $0.id == "other" }) {
+            contexts.append(StyleConfig.default.contexts.last!)
+        }
+    }
+}
+
+extension InsightEvent {
+    private enum CodingKeys: String, CodingKey {
+        case id, ts, app, bundleId, context, mode, audioSec, words, sttMs, llmMs, engine
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decodeIfPresent(UUID.self, forKey: .id)) ?? nil ?? UUID()
+        ts = try c.decode(Date.self, forKey: .ts)
+        app = (try? c.decodeIfPresent(String.self, forKey: .app)) ?? nil ?? ""
+        bundleId = (try? c.decodeIfPresent(String.self, forKey: .bundleId)) ?? nil ?? ""
+        context = (try? c.decodeIfPresent(String.self, forKey: .context)) ?? nil ?? ""
+        mode = (try? c.decodeIfPresent(String.self, forKey: .mode)) ?? nil ?? "dictate"
+        audioSec = (try? c.decodeIfPresent(Double.self, forKey: .audioSec)) ?? nil ?? 0
+        words = (try? c.decodeIfPresent(Int.self, forKey: .words)) ?? nil ?? 0
+        sttMs = (try? c.decodeIfPresent(Int.self, forKey: .sttMs)) ?? nil ?? 0
+        llmMs = (try? c.decodeIfPresent(Int.self, forKey: .llmMs)) ?? nil ?? 0
+        engine = (try? c.decodeIfPresent(String.self, forKey: .engine)) ?? nil ?? ""
+    }
+}

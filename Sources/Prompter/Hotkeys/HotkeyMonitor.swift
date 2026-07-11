@@ -108,33 +108,29 @@ final class HotkeyMonitor {
                 (promptKey, .prompt),
             ]
             for (key, mode) in candidates where code == key.keyCode {
-                // Key must be going DOWN (its flag now present) and be the only modifier held.
-                guard flags.contains(key.flag), flags.subtracting([key.flag]).isEmpty else { return }
+                // Key must be going DOWN (its flag now present) and be the only modifier
+                // held. Caps Lock doesn't count — it sits in the flags of every event
+                // while engaged and would otherwise silently disable the hotkeys.
+                guard flags.contains(key.flag),
+                      flags.subtracting([key.flag, .capsLock]).isEmpty else { return }
                 beginPending(mode: mode, keyCode: code)
                 return
             }
 
-        case .pending(_, let keyCode):
-            if code == keyCode {
-                let key = keyForCode(keyCode)
-                if key == nil || !flags.contains(key!.flag) {
-                    // Released before the hold threshold — just a tap; ignore.
-                    holdTimer?.cancel()
-                    state = .idle
-                }
-            } else if !flags.isEmpty {
-                // A second modifier joined — user is doing a shortcut.
-                holdTimer?.cancel()
-                state = .idle
-            }
+        case .pending:
+            // Any modifier transition ends pending: the same key can't be pressed
+            // twice, so a same-key event is its release (a tap — ignore), and a
+            // different key means the user is chording a shortcut.
+            holdTimer?.cancel()
+            state = .idle
 
         case .active(_, let keyCode):
+            // A second event for the held key is necessarily its release. Judging by
+            // keyCode (not aggregate flags) keeps this correct when the same-named
+            // modifier on the other side of the keyboard is also down.
             if code == keyCode {
-                let key = keyForCode(keyCode)
-                if key == nil || !flags.contains(key!.flag) {
-                    state = .idle
-                    onCommit?()
-                }
+                state = .idle
+                onCommit?()
             }
         }
     }
@@ -174,7 +170,4 @@ final class HotkeyMonitor {
         DispatchQueue.main.asyncAfter(deadline: .now() + threshold, execute: work)
     }
 
-    private func keyForCode(_ code: UInt16) -> HotkeyKey? {
-        HotkeyKey.allCases.first { $0.keyCode == code }
-    }
 }

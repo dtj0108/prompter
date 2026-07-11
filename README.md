@@ -23,6 +23,8 @@ open /Applications/Prompter.app
 
 First run: grant **Microphone** and **Accessibility** when prompted (Accessibility covers the hotkey listener, auto-paste, and window-title reading). If hotkeys don't respond after granting Accessibility, also grant **Input Monitoring** from Settings → Permissions.
 
+Also one-time: macOS 26 may show a "Prompter would like to paste from …" alert the first time it snapshots your clipboard (it saves and restores your clipboard around every insert) — choose **Always Allow**. And the `claude` CLI needs a one-time login: run `claude` in Terminal, then `/login` (your Claude subscription covers it; no API key needed).
+
 **Keeping permissions across rebuilds:** ad-hoc signing means macOS sees every rebuilt binary as a new app, so grants reset after code changes. One-time fix: Keychain Access → Certificate Assistant → Create a Certificate → name `prompter-dev`, type **Code Signing** — then build with `./scripts/build-app.sh --identity prompter-dev --install`.
 
 ## Data (all local, all editable)

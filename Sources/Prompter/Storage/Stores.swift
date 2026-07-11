@@ -5,7 +5,16 @@ private func loadJSON<T: Codable>(_ url: URL, fallback: T) -> T {
     guard let data = try? Data(contentsOf: url) else { return fallback }
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601
-    return (try? decoder.decode(T.self, from: data)) ?? fallback
+    do {
+        return try decoder.decode(T.self, from: data)
+    } catch {
+        // Never let a bad file get silently overwritten by defaults on the next
+        // save — park a copy first so nothing is ever lost.
+        Log.write("failed to decode \(url.lastPathComponent): \(error) — backing it up")
+        let backup = url.appendingPathExtension("bak-\(Int(Date().timeIntervalSince1970))")
+        try? FileManager.default.copyItem(at: url, to: backup)
+        return fallback
+    }
 }
 
 private func saveJSON<T: Codable>(_ value: T, to url: URL) {

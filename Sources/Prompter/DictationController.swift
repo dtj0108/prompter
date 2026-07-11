@@ -19,6 +19,8 @@ final class DictationController {
     private var busy = false
     var isPaused = false
     private var maxDurationTimer: DispatchWorkItem?
+    /// Bumped on every session start/stop; async startup steps abort if it moved.
+    private var sessionGen = 0
 
     func start() {
         hotkeys.onBegin = { [weak self] mode in
@@ -31,6 +33,28 @@ final class DictationController {
             DispatchQueue.main.async { self?.abortSession() }
         }
         hotkeys.start()
+
+        // Mic disappeared mid-recording (device switch, sleep): salvage what we heard.
+        recorder.onInterrupted = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self, self.session != nil else { return }
+                Log.write("audio engine configuration changed mid-recording — committing early")
+                self.commitSession()
+            }
+        }
+
+        // Global NSEvent monitors registered before Accessibility was granted never
+        // start delivering events — re-register once the grant appears.
+        if !AXIsProcessTrusted() {
+            let timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] timer in
+                if AXIsProcessTrusted() {
+                    timer.invalidate()
+                    Log.write("accessibility granted — re-registering hotkey monitors")
+                    self?.hotkeys.start()
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+        }
 
         // Warm up the speech model check in the background.
         Task {
@@ -46,7 +70,15 @@ final class DictationController {
     // MARK: - Session lifecycle
 
     private func beginSession(mode: DictationMode) {
-        guard !isPaused, !busy, session == nil else { return }
+        guard !isPaused else {
+            HUD.shared.flash(.failure("Prompter is paused"))
+            return
+        }
+        guard !busy else {
+            HUD.shared.flash(.failure("Still finishing the last one…"))
+            return
+        }
+        guard session == nil else { return }
 
         guard Recorder.micAuthorized() else {
             Task {
@@ -60,11 +92,18 @@ final class DictationController {
 
         let context = ContextDetector.capture()
         session = Session(mode: mode, context: context, startedAt: Date())
+        sessionGen += 1
+        let gen = sessionGen
         playSound("Pop")
 
         Task { @MainActor in
             do {
                 try await engine.begin(inputFormat: recorder.inputFormat)
+                // The user may have released/cancelled while the engine was starting.
+                guard gen == sessionGen, session != nil else {
+                    engine.cancel()
+                    return
+                }
                 recorder.onBuffer = { [weak self] buffer, _ in
                     self?.engine.feed(buffer)
                 }
@@ -77,10 +116,12 @@ final class DictationController {
                 DispatchQueue.main.asyncAfter(deadline: .now() + maxSec, execute: work)
             } catch {
                 Log.write("begin failed: \(error)")
-                session = nil
-                recorder.stop()
-                engine.cancel()
-                HUD.shared.flash(.failure("Couldn't start recording"))
+                if gen == sessionGen {
+                    session = nil
+                    recorder.stop()
+                    engine.cancel()
+                    HUD.shared.flash(.failure("Couldn't start recording"))
+                }
             }
         }
     }
@@ -88,6 +129,7 @@ final class DictationController {
     private func commitSession() {
         guard let current = session, !busy else { return }
         session = nil
+        sessionGen += 1
         busy = true
         maxDurationTimer?.cancel()
 
@@ -127,7 +169,17 @@ final class DictationController {
             let (finalText, llmMs, usedLLM) = await self.transform(transcript: transcript, session: current)
 
             await MainActor.run {
-                let pasteResult = Paster.insert(finalText)
+                // Don't fire a synthetic ⌘V into a different app than the one dictated
+                // into — the LLM step can take long enough for the user to switch away.
+                let front = NSWorkspace.shared.frontmostApplication
+                let sameApp = current.context.bundleId.isEmpty
+                    || (front?.bundleIdentifier == current.context.bundleId
+                        && front?.processIdentifier == current.context.pid)
+
+                var pasteResult = Paster.insert(finalText, allowPaste: sameApp)
+                if !sameApp {
+                    pasteResult = .clipboardOnly(reason: "App changed — text is on your clipboard (⌘V)")
+                }
                 let words = finalText.split(whereSeparator: { $0.isWhitespace }).count
 
                 InsightsStore.shared.append(InsightEvent(
@@ -158,6 +210,7 @@ final class DictationController {
     private func abortSession() {
         guard session != nil else { return }
         session = nil
+        sessionGen += 1
         maxDurationTimer?.cancel()
         recorder.stop()
         recorder.onBuffer = nil

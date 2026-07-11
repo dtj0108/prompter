@@ -14,6 +14,7 @@ struct DictionaryView: View {
                 }
                 Spacer()
                 Button {
+                    search = "" // a new row must be visible even mid-search
                     store.entries.insert(DictEntry(phrase: ""), at: 0)
                 } label: {
                     Label("Add word", systemImage: "plus")
@@ -28,7 +29,9 @@ struct DictionaryView: View {
 
             List {
                 ForEach($store.entries) { $entry in
-                    if search.isEmpty || matches(entry) {
+                    // Empty rows stay visible so an entry being typed can't vanish
+                    // mid-keystroke when it stops matching the search.
+                    if search.isEmpty || entry.phrase.isEmpty || matches(entry) {
                         DictRow(entry: $entry) {
                             store.entries.removeAll { $0.id == entry.id }
                         }
@@ -60,10 +63,7 @@ private struct DictRow: View {
             TextField("Word or phrase", text: $entry.phrase)
                 .font(.body.weight(.medium))
                 .frame(minWidth: 140, maxWidth: 180)
-            TextField("Sounds like (comma-separated)", text: Binding(
-                get: { entry.soundsLike.joined(separator: ", ") },
-                set: { entry.soundsLike = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
-            ))
+            ListField(placeholder: "Sounds like (comma-separated)", list: $entry.soundsLike)
             TextField("Note", text: $entry.note)
                 .frame(maxWidth: 130)
             Button(role: .destructive, action: onDelete) {

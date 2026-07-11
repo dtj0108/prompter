@@ -24,10 +24,18 @@ enum LLMError: Error, LocalizedError {
 
 /// Talks to Claude either via the Anthropic API (if an API key is configured)
 /// or via the locally installed `claude` CLI (billed to the user's existing subscription).
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+    func set() { lock.lock(); flag = true; lock.unlock() }
+    func get() -> Bool { lock.lock(); defer { lock.unlock() }; return flag }
+}
+
 final class LLMClient {
     static let shared = LLMClient()
 
     private var cachedCLIPath: String?
+    private var cachedForConfiguredPath: String?
 
     func complete(system: String, user: String, model: String, timeout: TimeInterval = 90) async throws -> String {
         let apiKey = ConfigStore.shared.config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -81,9 +89,12 @@ final class LLMClient {
     // MARK: - claude CLI
 
     func locateCLI() -> String? {
+        let configured = ConfigStore.shared.config.claudeCLIPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if configured != cachedForConfiguredPath {
+            cachedCLIPath = nil // settings changed — re-resolve
+        }
         if let cached = cachedCLIPath, FileManager.default.isExecutableFile(atPath: cached) { return cached }
         var candidates: [String] = []
-        let configured = ConfigStore.shared.config.claudeCLIPath.trimmingCharacters(in: .whitespacesAndNewlines)
         if !configured.isEmpty { candidates.append((configured as NSString).expandingTildeInPath) }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         candidates.append(contentsOf: [
@@ -94,6 +105,7 @@ final class LLMClient {
         ])
         for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
             cachedCLIPath = path
+            cachedForConfiguredPath = configured
             return path
         }
         return nil
@@ -131,6 +143,8 @@ final class LLMClient {
         let outTask = Task.detached { stdout.fileHandleForReading.readDataToEndOfFile() }
         let errTask = Task.detached { stderr.fileHandleForReading.readDataToEndOfFile() }
 
+        let timedOut = LockedFlag()
+        let pid = process.processIdentifier
         let finished: Bool = await withCheckedContinuation { continuation in
             let deadline = DispatchTime.now() + timeout
             DispatchQueue.global().async {
@@ -139,7 +153,14 @@ final class LLMClient {
             }
             DispatchQueue.global().asyncAfter(deadline: deadline) {
                 if process.isRunning {
+                    timedOut.set()
                     process.terminate()
+                    // If SIGTERM is ignored, escalate so complete() can never hang forever.
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
+                        if process.isRunning {
+                            kill(pid, SIGKILL)
+                        }
+                    }
                 }
             }
         }
@@ -149,10 +170,13 @@ final class LLMClient {
         let errData = await errTask.value
 
         guard process.terminationStatus == 0 else {
-            if process.terminationReason == .uncaughtSignal { throw LLMError.timeout }
+            if timedOut.get() { throw LLMError.timeout }
             let combined = (String(data: outData, encoding: .utf8) ?? "") + " " + (String(data: errData, encoding: .utf8) ?? "")
             if combined.localizedCaseInsensitiveContains("not logged in") {
                 throw LLMError.cliNotLoggedIn
+            }
+            if process.terminationReason == .uncaughtSignal {
+                throw LLMError.cliFailed("claude CLI killed by signal \(process.terminationStatus)")
             }
             throw LLMError.cliFailed(String(combined.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500)))
         }

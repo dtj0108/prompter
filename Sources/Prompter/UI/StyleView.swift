@@ -67,12 +67,10 @@ private struct ContextEditor: View {
                 }
                 if ctx.id != "other" {
                     LabeledContent("Apps (bundle IDs)") {
-                        TextField("com.tinyspeck.slackmacgap, …", text: listBinding($ctx.appBundleIds))
-                            .textFieldStyle(.roundedBorder)
+                        ListField(placeholder: "com.tinyspeck.slackmacgap, …", list: $ctx.appBundleIds)
                     }
                     LabeledContent("Title keywords") {
-                        TextField("gmail, inbox, …", text: listBinding($ctx.titleKeywords))
-                            .textFieldStyle(.roundedBorder)
+                        ListField(placeholder: "gmail, inbox, …", list: $ctx.titleKeywords)
                     }
                 }
                 Text("Tone instructions")
@@ -84,12 +82,5 @@ private struct ContextEditor: View {
             }
             .padding(6)
         }
-    }
-
-    private func listBinding(_ list: Binding<[String]>) -> Binding<String> {
-        Binding(
-            get: { list.wrappedValue.joined(separator: ", ") },
-            set: { list.wrappedValue = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
-        )
     }
 }

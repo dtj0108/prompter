@@ -4,12 +4,14 @@ import ApplicationServices
 struct FrontContext {
     var appName: String
     var bundleId: String
+    var pid: pid_t
     var windowTitle: String
     var style: ContextStyle
 
     static let unknown = FrontContext(
         appName: "",
         bundleId: "",
+        pid: 0,
         windowTitle: "",
         style: StyleConfig.default.contexts.last!
     )
@@ -24,14 +26,14 @@ enum ContextDetector {
         let fallback = style.contexts.first(where: { $0.id == "other" }) ?? style.contexts.last ?? StyleConfig.default.contexts.last!
 
         guard let app = NSWorkspace.shared.frontmostApplication else {
-            return FrontContext(appName: "", bundleId: "", windowTitle: "", style: fallback)
+            return FrontContext(appName: "", bundleId: "", pid: 0, windowTitle: "", style: fallback)
         }
         let bundleId = app.bundleIdentifier ?? ""
         let name = app.localizedName ?? ""
         let title = focusedWindowTitle(pid: app.processIdentifier) ?? ""
 
         let matched = match(bundleId: bundleId, title: title, contexts: style.contexts) ?? fallback
-        return FrontContext(appName: name, bundleId: bundleId, windowTitle: title, style: matched)
+        return FrontContext(appName: name, bundleId: bundleId, pid: app.processIdentifier, windowTitle: title, style: matched)
     }
 
     static func match(bundleId: String, title: String, contexts: [ContextStyle]) -> ContextStyle? {
@@ -57,6 +59,9 @@ enum ContextDetector {
     private static func focusedWindowTitle(pid: pid_t) -> String? {
         guard AXIsProcessTrusted() else { return nil }
         let appElement = AXUIElementCreateApplication(pid)
+        // Runs synchronously on the main thread at hotkey time — a hung target app
+        // must not be able to stall us for the default multi-second AX timeout.
+        AXUIElementSetMessagingTimeout(appElement, 0.3)
         var window: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &window) == .success,
               let win = window,

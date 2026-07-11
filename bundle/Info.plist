@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.drew.prompter</string>
+	<key>CFBundleName</key>
+	<string>Prompter</string>
+	<key>CFBundleDisplayName</key>
+	<string>Prompter</string>
+	<key>CFBundleExecutable</key>
+	<string>Prompter</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Prompter listens while you hold the dictation hotkey so it can transcribe what you say.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Built for Drew.</string>
+</dict>
+</plist>

@@ -10,10 +10,8 @@
 #
 # NOTE on permissions: with ad-hoc signing ("-"), macOS treats every rebuilt
 # binary as a new app, so Microphone/Accessibility grants reset after each
-# code change. For a stable identity, create a self-signed code-signing
-# certificate once (Keychain Access → Certificate Assistant → Create a
-# Certificate → name "prompter-dev", type "Code Signing") and pass
-# --identity prompter-dev.
+# code change. Public releases must use the same Developer ID Application
+# identity every time. Local builds can use a stable self-signed identity.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -62,8 +60,18 @@ fi
 cp bundle/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 echo "==> codesign (identity: $IDENTITY)"
-codesign --force --sign "$IDENTITY" --identifier com.drew.prompter "$APP"
-codesign --verify --strict "$APP"
+SIGN_ARGS=(
+  --force
+  --sign "$IDENTITY"
+  --identifier com.drew.prompter
+  --entitlements bundle/Prompter.entitlements
+)
+if [[ "$IDENTITY" == Developer\ ID\ Application:* ]]; then
+  # Developer ID distribution requires hardened runtime and a trusted timestamp.
+  SIGN_ARGS+=(--options runtime --timestamp)
+fi
+codesign "${SIGN_ARGS[@]}" "$APP"
+codesign --verify --strict --verbose=2 "$APP"
 
 echo "Built $APP"
 

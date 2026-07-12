@@ -51,6 +51,12 @@ final class DictationController {
             }
         }
 
+        // The mic is producing exact digital zeros: something upstream is
+        // muting it — recover mid-session instead of ending in "Didn't catch that".
+        recorder.onDigitalSilence = { [weak self] in
+            DispatchQueue.main.async { self?.recoverFromSilentCapture() }
+        }
+
         // Global NSEvent monitors registered before Accessibility was granted never
         // start delivering events — re-register once the grant appears.
         if !AXIsProcessTrusted() {
@@ -150,6 +156,7 @@ final class DictationController {
         maxDurationTimer?.cancel()
 
         let audioSec = recorder.stop()
+        let heardOnlySilence = recorder.heardOnlySilence
         let recordingURL = recorder.takeRecordingURL()
         recorder.onBuffer = nil
         playSound("Tink")
@@ -176,7 +183,11 @@ final class DictationController {
 
             guard !transcript.isEmpty else {
                 await MainActor.run {
-                    HUD.shared.flash(.failure("Didn't catch that"))
+                    if heardOnlySilence {
+                        HUD.shared.flash(.failure("No mic signal — recheck Microphone permission"), for: 4)
+                    } else {
+                        HUD.shared.flash(.failure("Didn't catch that"))
+                    }
                     self.busy = false
                 }
                 return
@@ -229,6 +240,29 @@ final class DictationController {
                 }
                 self.busy = false
             }
+        }
+    }
+
+    /// A real room never yields sustained exact zeros — the input is being muted
+    /// upstream. Apple's voice-processing DSP (`setVoiceProcessingEnabled`) is the
+    /// known offender on some Macs: drop it, restart capture within the running
+    /// session, and remember the choice so later dictations start clean.
+    private func recoverFromSilentCapture() {
+        guard session != nil, !busy else { return }
+        guard ConfigStore.shared.config.voiceIsolationEnabled else {
+            Log.write("mic delivering pure silence with voice isolation off — microphone grant is likely broken")
+            return
+        }
+        Log.write("mic delivering pure silence — disabling voice isolation and restarting capture")
+        recorder.stop()
+        recorder.applyVoiceIsolation(false)
+        ConfigStore.shared.config.voiceIsolationEnabled = false
+        do {
+            try recorder.start()
+        } catch {
+            Log.write("restart after silent capture failed: \(error)")
+            abortSession()
+            HUD.shared.flash(.failure("Couldn't restart the microphone"))
         }
     }
 

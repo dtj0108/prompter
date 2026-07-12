@@ -6,6 +6,7 @@ import AppKit
 //   Prompter --test-cleanup "<text>"     → run the cleanup prompt on text and exit
 //   Prompter --test-prompt "<text>"      → run Prompt Mode on text and exit
 //   Prompter --test-context <bundle>     → print the matching style context and exit
+//   Prompter --render-main <png-path>     → render the complete dashboard for visual QA
 //   Prompter --render-style <png-path>   → render the Style page for visual QA
 if HeadlessCLI.runIfRequested() {
     exit(0)

@@ -160,6 +160,35 @@ enum HeadlessCLI {
             }
             return true
 
+        case "--render-main":
+            guard args.count >= 3 else {
+                FileHandle.standardError.write(Data("usage: Prompter --render-main <png-path>\n".utf8))
+                return true
+            }
+            MainActor.assumeIsolated {
+                _ = NSApplication.shared
+                let content = MainWindowView()
+                    .frame(width: 960, height: 640)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                let host = NSHostingView(rootView: content)
+                host.frame = NSRect(x: 0, y: 0, width: 960, height: 640)
+                host.appearance = NSAppearance(named: .aqua)
+                host.layoutSubtreeIfNeeded()
+                guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+                    FileHandle.standardError.write(Data("failed to render main window\n".utf8))
+                    return
+                }
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
+                do {
+                    try png.write(to: URL(fileURLWithPath: args[2]), options: .atomic)
+                    print(args[2])
+                } catch {
+                    FileHandle.standardError.write(Data("render failed: \(error)\n".utf8))
+                }
+            }
+            return true
+
         case "--render-style":
             guard args.count >= 3 else {
                 FileHandle.standardError.write(Data("usage: Prompter --render-style <png-path>\n".utf8))

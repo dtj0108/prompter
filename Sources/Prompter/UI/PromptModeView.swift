@@ -21,7 +21,7 @@ struct PromptModeView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                VStack(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 14)], spacing: 14) {
                     ForEach(PromptAssistLevel.allCases) { level in
                         LevelCard(level: level, selected: level == selected) {
                             config.config.promptAssistLevel = level.rawValue
@@ -46,7 +46,7 @@ struct PromptModeView: View {
                 }
             }
             .padding(24)
-            .frame(maxWidth: 640, alignment: .leading)
+            .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -56,37 +56,39 @@ private struct LevelCard: View {
     let level: PromptAssistLevel
     let selected: Bool
     let action: () -> Void
-    @State private var hovered = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                .font(.body)
-                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(level.label).font(.headline)
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(level.label)
+                        .font(.system(size: 25, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    if selected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.blue)
+                    }
+                }
+
                 Text(level.summary)
-                    .font(.callout)
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 12)
             }
-            Spacer(minLength: 0)
+            .padding(18)
+            .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(
+                        selected ? Color.blue.opacity(0.72) : Color.secondary.opacity(0.18),
+                        lineWidth: selected ? 3 : 1
+                    )
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 14))
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.secondary.opacity(selected ? 0.12 : hovered ? 0.09 : 0.06))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(selected ? Color.accentColor.opacity(0.7) : Color.clear, lineWidth: 1.5)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 10))
-        .onTapGesture(perform: action)
-        .onHover { inside in
-            withAnimation(.easeOut(duration: 0.12)) { hovered = inside }
-        }
+        .buttonStyle(.plain)
     }
 }

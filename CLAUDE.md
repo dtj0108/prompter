@@ -41,7 +41,7 @@ All state in `~/Library/Application Support/Prompter/`: `config.json` (incl. Ope
 
 OpenRouter transcription is opt-in and uses `openai/whisper-large-v3-turbo`; local Apple STT is the default. Text cleanup and Prompt Mode default to the low-latency `google/gemini-3.1-flash-lite`. STT and cleanup `usage.cost` values are both logged per dictation into insights.
 
-Public updates are built by `.github/workflows/publish-update.yml` on pushes to `main`. It publishes `Prompter.zip` plus `update.json` to GitHub Releases. `AppUpdater` checks the public repository embedded as `PrompterUpdateRepository`; never embed a GitHub token in the app.
+Public updates are built by `.github/workflows/publish-update.yml` on pushes to `main`. The workflow requires the Developer ID and notarization secrets documented in README, and must never fall back to ad-hoc signing: a changing code identity resets Microphone and Accessibility grants. It publishes `Prompter.zip` plus `update.json` to GitHub Releases. `AppUpdater` checks the public repository embedded as `PrompterUpdateRepository`; never embed a GitHub token in the app.
 
 ## UI map
 

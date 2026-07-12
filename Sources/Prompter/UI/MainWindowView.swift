@@ -42,26 +42,28 @@ struct MainWindowView: View {
     @ObservedObject var state = MainWindowState.shared
 
     var body: some View {
-        NavigationSplitView {
-            ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(MainTab.allCases) { tab in
-                        SidebarItem(tab: tab, selected: state.tab == tab) {
-                            state.tab = tab
-                        }
+        HStack(spacing: 0) {
+            VStack(spacing: 2) {
+                ForEach(MainTab.allCases) { tab in
+                    SidebarItem(tab: tab, selected: state.tab == tab) {
+                        state.tab = tab
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.top, 4)
+
+                Spacer(minLength: 0)
             }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 190)
-            // No app-icon header and no collapse-sidebar toolbar button — the
-            // sidebar is permanent and the content starts at the top.
-            .toolbar(removing: .sidebarToggle)
-        } detail: {
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .frame(width: 180)
+            .frame(maxHeight: .infinity)
+            .background(Color(nsColor: .windowBackgroundColor))
+
+            Divider()
+
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(Color(nsColor: .windowBackgroundColor))
         .frame(minWidth: 880, minHeight: 600)
     }
 

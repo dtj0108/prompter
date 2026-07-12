@@ -6,6 +6,15 @@ final class Recorder {
     private var recordingFile: AVAudioFile?
     private var recordingURL: URL?
     private var didLogRecordingError = false
+    /// Real microphones always carry noise-floor dither; a sustained run of
+    /// exact digital zeros means a DSP unit or a revoked permission is muting
+    /// the input, not a quiet room.
+    private var nonSilentSampleSeen = false
+    private var silentFrames = 0
+    private var silenceReported = false
+    /// Fired once, on the audio tap thread, after ~1 s of pure digital silence.
+    var onDigitalSilence: (() -> Void)?
+    var heardOnlySilence: Bool { !nonSilentSampleSeen }
     var onBuffer: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
     /// Live mic level 0…1 for the waveform HUD, several times per buffer.
     /// Called on the audio tap thread.
@@ -46,12 +55,16 @@ final class Recorder {
         } else {
             discardRecording()
         }
+        nonSilentSampleSeen = false
+        silentFrames = 0
+        silenceReported = false
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, when in
             guard let self else { return }
             self.onBuffer?(buffer, when)
             self.writeCloudRecording(buffer)
             self.emitLevels(buffer)
+            self.trackSilence(buffer)
         }
         engine.prepare()
         try engine.start()
@@ -132,6 +145,20 @@ final class Recorder {
                 didLogRecordingError = true
                 Log.write("cloud recording write failed; local STT remains available: \(error)")
             }
+        }
+    }
+
+    /// Called only by AVAudioEngine's serial tap callback.
+    private func trackSilence(_ buffer: AVAudioPCMBuffer) {
+        guard !nonSilentSampleSeen, let channel = buffer.floatChannelData?[0] else { return }
+        for i in 0..<Int(buffer.frameLength) where channel[i] != 0 {
+            nonSilentSampleSeen = true
+            return
+        }
+        silentFrames += Int(buffer.frameLength)
+        if !silenceReported, Double(silentFrames) >= buffer.format.sampleRate {
+            silenceReported = true
+            onDigitalSilence?()
         }
     }
 

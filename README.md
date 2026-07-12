@@ -94,7 +94,17 @@ Prompter stores editable state in `~/Library/Application Support/Prompter/`:
 
 ## Publishing updates
 
-Pushes to `main` run `.github/workflows/publish-update.yml`. The workflow builds a versioned app, packages `Prompter.zip`, generates a SHA-256 update manifest, and publishes both in a GitHub Release. Installed copies check that public release feed and update only when the user chooses to install.
+Pushes to `main` run `.github/workflows/publish-update.yml`. The workflow builds a versioned app, signs it with a stable Developer ID identity, notarizes and staples it, packages `Prompter.zip`, generates a SHA-256 update manifest, and publishes both in a GitHub Release. Installed copies check that public release feed and update only when the user chooses to install.
+
+The release workflow requires these GitHub Actions secrets:
+
+- `MACOS_CERTIFICATE` — base64-encoded Developer ID Application `.p12`
+- `MACOS_CERTIFICATE_PASSWORD` — password used when exporting the `.p12`
+- `APPLE_API_KEY` — contents of the App Store Connect team API private key (`.p8`)
+- `APPLE_API_KEY_ID` — App Store Connect team API key ID
+- `APPLE_API_ISSUER` — App Store Connect API issuer ID
+
+Keep the signing certificate and bundle identifier stable across releases. Changing either one causes macOS to treat the update as a different app and request permissions again.
 
 ## License
 

@@ -25,6 +25,11 @@ struct InsightsView: View {
                         value: store.totalCostUSD < 0.005 ? "$0" : String(format: "$%.2f", store.totalCostUSD),
                         unit: "all time"
                     )
+                    StatCard(
+                        title: "Speaking pace",
+                        value: store.averageWPM > 0 ? "\(Int(store.averageWPM.rounded()))" : "—",
+                        unit: "words per minute"
+                    )
                 }
 
                 GroupBox("Words per day — last 14 days") {

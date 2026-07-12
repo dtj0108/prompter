@@ -208,6 +208,13 @@ final class InsightsStore: ObservableObject {
     /// Actual AI spend (reported per-request by OpenRouter; 0 when on the claude CLI).
     var totalCostUSD: Double { events.reduce(0) { $0 + $1.costUSD } }
 
+    /// Average speaking pace: words dictated per minute of recorded audio.
+    var averageWPM: Double {
+        let totalSec = events.reduce(0.0) { $0 + $1.audioSec }
+        guard totalSec > 0 else { return 0 }
+        return Double(totalWords) / (totalSec / 60.0)
+    }
+
     /// Estimated seconds saved vs typing at 40 WPM.
     var totalTimeSavedSec: Double {
         events.reduce(0) { acc, e in

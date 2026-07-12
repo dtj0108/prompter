@@ -53,19 +53,9 @@ struct MainWindowView: View {
                 .padding(.top, 4)
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HStack(spacing: 8) {
-                    Image(systemName: "waveform.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.linearGradient(
-                            colors: [Color(red: 0.49, green: 0.23, blue: 0.93), Color(red: 0.22, green: 0.19, blue: 0.64)],
-                            startPoint: .top, endPoint: .bottom))
-                    Text("Prompter").font(.headline)
-                    Spacer()
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-            }
+            // No app-icon header and no collapse-sidebar toolbar button — the
+            // sidebar is permanent and the content starts at the top.
+            .toolbar(removing: .sidebarToggle)
         } detail: {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

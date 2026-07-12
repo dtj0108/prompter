@@ -35,6 +35,12 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/Prompter "$APP/Contents/MacOS/Prompter"
 cp bundle/Info.plist "$APP/Contents/Info.plist"
 
+if [[ ! -f bundle/AppIcon.icns ]]; then
+  echo "==> rendering AppIcon.icns"
+  swift scripts/make-icon.swift bundle
+fi
+cp bundle/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+
 echo "==> codesign (identity: $IDENTITY)"
 codesign --force --sign "$IDENTITY" --identifier com.drew.prompter "$APP"
 codesign --verify --strict "$APP"

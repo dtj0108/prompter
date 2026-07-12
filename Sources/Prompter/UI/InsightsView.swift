@@ -80,7 +80,7 @@ struct InsightsView: View {
                                         Text("PROMPT")
                                             .font(.system(size: 9, weight: .bold))
                                             .padding(.horizontal, 4).padding(.vertical, 1)
-                                            .background(Color.purple.opacity(0.25), in: RoundedRectangle(cornerRadius: 3))
+                                            .background(Color.blue.opacity(0.25), in: RoundedRectangle(cornerRadius: 3))
                                     }
                                     Spacer()
                                     Text("\(e.words) words").foregroundStyle(.secondary)

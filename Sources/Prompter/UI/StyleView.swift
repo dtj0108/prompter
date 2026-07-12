@@ -129,7 +129,7 @@ struct StyleView: View {
         HStack(spacing: 12) {
             Image(systemName: "wand.and.stars")
                 .font(.title2)
-                .foregroundStyle(.purple)
+                .foregroundStyle(.blue)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Prompt Mode").font(.body.weight(.semibold))
                 Text("Uses separate coding-specialized rules to turn rough ideas into high-quality prompts.")
@@ -144,7 +144,7 @@ struct StyleView: View {
             .controlSize(.small)
         }
         .padding(14)
-        .background(Color.purple.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.blue.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var selectedContextIndex: Int? {
@@ -227,7 +227,7 @@ private struct ContextStylePage: View {
             if context.tonePreset == nil {
                 Label("Custom instructions are active", systemImage: "slider.horizontal.3")
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(.blue)
             }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 14)], spacing: 14) {
@@ -412,7 +412,7 @@ private struct ToneCard: View {
                     Spacer()
                     if selected {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(.blue)
                     }
                 }
                 Text(preset.subtitle)
@@ -426,14 +426,14 @@ private struct ToneCard: View {
                     .foregroundStyle(.primary.opacity(0.86))
                     .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
                     .padding(14)
-                    .background(Color.purple.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
+                    .background(Color.blue.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
             }
             .padding(18)
             .frame(maxWidth: .infinity, minHeight: 226, alignment: .topLeading)
             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
             .overlay {
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(selected ? Color.purple.opacity(0.72) : Color.secondary.opacity(0.18), lineWidth: selected ? 3 : 1)
+                    .stroke(selected ? Color.blue.opacity(0.72) : Color.secondary.opacity(0.18), lineWidth: selected ? 3 : 1)
             }
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }

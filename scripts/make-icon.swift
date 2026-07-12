@@ -1,4 +1,4 @@
-// Renders AppIcon.icns for Prompter: a white waveform on a violet→indigo squircle.
+// Renders AppIcon.icns for Prompter: a white waveform on a blue squircle.
 // Run: swift scripts/make-icon.swift <output-dir>
 // Produces <output-dir>/AppIcon.iconset/*.png and <output-dir>/AppIcon.icns (via iconutil).
 
@@ -43,7 +43,7 @@ func draw(px: Int) -> NSBitmapImageRep {
         cg.setShadow(offset: CGSize(width: 0, height: -10 * u), blur: 24 * u,
                      color: NSColor.black.withAlphaComponent(0.30).cgColor)
         cg.addPath(squircle)
-        cg.setFillColor(rgb(0x3730A3).cgColor)
+        cg.setFillColor(rgb(0x1E40AF).cgColor)
         cg.fillPath()
         cg.restoreGState()
     }
@@ -52,10 +52,10 @@ func draw(px: Int) -> NSBitmapImageRep {
     cg.addPath(squircle)
     cg.clip()
 
-    // Background: violet → indigo vertical gradient.
+    // Background: light-blue → deep-blue vertical gradient.
     let bg = CGGradient(
         colorsSpace: CGColorSpaceCreateDeviceRGB(),
-        colors: [rgb(0x7C3AED).cgColor, rgb(0x3730A3).cgColor] as CFArray,
+        colors: [rgb(0x3B82F6).cgColor, rgb(0x1E40AF).cgColor] as CFArray,
         locations: [0, 1]
     )!
     cg.drawLinearGradient(bg, start: CGPoint(x: S / 2, y: rect.maxY), end: CGPoint(x: S / 2, y: rect.minY), options: [])

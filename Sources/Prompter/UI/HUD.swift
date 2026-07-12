@@ -233,7 +233,7 @@ struct HUDView: View {
     }
 
     private func accent(_ mode: DictationMode) -> Color {
-        mode == .prompt ? .purple : Color(red: 1.0, green: 0.27, blue: 0.23)
+        mode == .prompt ? .blue : Color(red: 1.0, green: 0.27, blue: 0.23)
     }
 
     private func badge(_ text: String) -> some View {
@@ -242,7 +242,7 @@ struct HUDView: View {
             .foregroundStyle(.white.opacity(0.9))
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
-            .background(Color.purple.opacity(0.35), in: RoundedRectangle(cornerRadius: 4))
+            .background(Color.blue.opacity(0.35), in: RoundedRectangle(cornerRadius: 4))
     }
 }
 

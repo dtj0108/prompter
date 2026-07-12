@@ -179,7 +179,7 @@ struct HomeView: View {
                     )
                     hotkeyCard(
                         symbol: "wand.and.stars",
-                        tint: .purple,
+                        tint: .blue,
                         title: "Prompt Mode",
                         key: promptKeyName,
                         detail: "Ramble what you want an AI to do — out comes an engineered prompt."
@@ -334,7 +334,7 @@ private struct HistoryRow: View {
             HStack(spacing: 8) {
                 Image(systemName: isPrompt ? "wand.and.stars" : "mic.fill")
                     .font(.caption)
-                    .foregroundStyle(isPrompt ? Color.purple : Color(red: 1.0, green: 0.27, blue: 0.23))
+                    .foregroundStyle(isPrompt ? Color.blue : Color(red: 1.0, green: 0.27, blue: 0.23))
                     .frame(width: 16)
                 Text(isPrompt ? "Prompt" : "Dictation")
                     .font(.caption.weight(.semibold))

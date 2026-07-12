@@ -13,6 +13,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DictationController.shared.start()
         HUD.shared.start()
         AppUpdater.shared.checkForUpdates()
+        // The launch-time check goes stale on a long-running app; re-check
+        // periodically so releases published afterwards still surface.
+        let updateTimer = Timer.scheduledTimer(withTimeInterval: 6 * 60 * 60, repeats: true) { _ in
+            DispatchQueue.main.async {
+                if case .available = AppUpdater.shared.state { return }
+                AppUpdater.shared.checkForUpdates()
+            }
+        }
+        RunLoop.main.add(updateTimer, forMode: .common)
         Log.write("Prompter launched")
 
         // Prompter is a regular Dock app: always present a window at launch.

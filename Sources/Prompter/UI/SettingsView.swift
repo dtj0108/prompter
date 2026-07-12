@@ -178,7 +178,13 @@ struct SettingsView: View {
         }
         .onAppear {
             refreshPermissions()
-            if updater.state == .idle { updater.checkForUpdates() }
+            // Always re-check on open (stale "up to date" from launch otherwise
+            // hides releases published while the app was running) — but don't
+            // clobber an update that's already found or installing.
+            switch updater.state {
+            case .available, .downloading: break
+            default: updater.checkForUpdates()
+            }
         }
     }
 

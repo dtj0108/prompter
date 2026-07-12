@@ -34,6 +34,10 @@ final class DictationController {
         }
         hotkeys.start()
 
+        recorder.onLevel = { level in
+            HUD.shared.level(level)
+        }
+
         // Mic disappeared mid-recording (device switch, sleep): salvage what we heard.
         recorder.onInterrupted = { [weak self] in
             DispatchQueue.main.async {

@@ -86,6 +86,13 @@ struct SettingsView: View {
 
             Section("Behavior") {
                 Toggle("Play sounds", isOn: $store.config.soundsEnabled)
+                Toggle("Show bar at bottom of screen", isOn: Binding(
+                    get: { store.config.showIdleIndicator },
+                    set: { newValue in
+                        store.config.showIdleIndicator = newValue
+                        HUD.shared.applyIdleIndicatorSetting()
+                    }
+                ))
                 Toggle("Launch at login", isOn: Binding(
                     get: { store.config.launchAtLogin },
                     set: { newValue in

@@ -14,6 +14,7 @@ struct Config: Codable {
     var pasteRestoreDelayMs: Int = 800
     var maxRecordingSec: Int = 300
     var soundsEnabled: Bool = true
+    var showIdleIndicator: Bool = true
     var launchAtLogin: Bool = false
 
     static let `default` = Config()
@@ -123,7 +124,7 @@ extension Config {
     private enum CodingKeys: String, CodingKey {
         case apiKey, cleanupModel, promptModel, claudeCLIPath, dictationHotkey, promptHotkey
         case llmCleanupEnabled, holdThresholdMs, pasteRestoreDelayMs, maxRecordingSec
-        case soundsEnabled, launchAtLogin
+        case soundsEnabled, showIdleIndicator, launchAtLogin
     }
 
     init(from decoder: Decoder) throws {
@@ -140,6 +141,7 @@ extension Config {
         pasteRestoreDelayMs = (try? c.decodeIfPresent(Int.self, forKey: .pasteRestoreDelayMs)) ?? nil ?? d.pasteRestoreDelayMs
         maxRecordingSec = (try? c.decodeIfPresent(Int.self, forKey: .maxRecordingSec)) ?? nil ?? d.maxRecordingSec
         soundsEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .soundsEnabled)) ?? nil ?? d.soundsEnabled
+        showIdleIndicator = (try? c.decodeIfPresent(Bool.self, forKey: .showIdleIndicator)) ?? nil ?? d.showIdleIndicator
         launchAtLogin = (try? c.decodeIfPresent(Bool.self, forKey: .launchAtLogin)) ?? nil ?? d.launchAtLogin
     }
 }

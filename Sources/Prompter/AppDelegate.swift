@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Prompts.ensurePromptModeFileExists()
         setupStatusItem()
         DictationController.shared.start()
+        HUD.shared.start()
         Log.write("Prompter launched")
 
         // First-run: nudge for permissions.

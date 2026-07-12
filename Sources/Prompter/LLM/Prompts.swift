@@ -4,7 +4,7 @@ enum Prompts {
 
     // MARK: - Cleanup (dictation mode)
 
-    static func cleanupSystemPrompt(context: FrontContext, style: StyleConfig, dictionary: [DictEntry]) -> String {
+    static func cleanupSystemPrompt(context: FrontContext, style: StyleConfig, dictionary: [DictEntry], snippets: [Snippet] = []) -> String {
         var parts: [String] = []
         parts.append("""
         You are the invisible text engine inside Prompter, a macOS dictation app. The user spoke aloud; \
@@ -40,6 +40,17 @@ enum Prompts {
             }
             dictLines.append("</dictionary>")
             parts.append(dictLines.joined(separator: "\n"))
+        }
+
+        let usableSnippets = snippets.filter { !$0.trigger.isEmpty && !$0.expansion.isEmpty }
+        if !usableSnippets.isEmpty {
+            var snipLines: [String] = ["<snippets>"]
+            snipLines.append("When the user SAYS one of these trigger phrases, replace it with its expansion text (the trigger spoken mid-sentence expands in place):")
+            for snippet in usableSnippets {
+                snipLines.append("- \"\(snippet.trigger)\" → \(snippet.expansion)")
+            }
+            snipLines.append("</snippets>")
+            parts.append(snipLines.joined(separator: "\n"))
         }
 
         var ctxLines: [String] = ["<destination>"]

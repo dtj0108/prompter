@@ -11,24 +11,30 @@ enum LLMError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noBackend: return "No Claude backend available (no API key and claude CLI not found)."
+        case .noBackend: return "No AI backend — add an OpenRouter API key in Settings (or install the claude CLI)."
         case .cliNotFound: return "claude CLI not found."
-        case .cliNotLoggedIn: return "claude CLI isn't logged in — run “claude /login” in Terminal once, or add an API key in Settings."
+        case .cliNotLoggedIn: return "claude CLI isn't logged in — run “claude /login” in Terminal once, or add an OpenRouter key in Settings."
         case .cliFailed(let msg): return "claude CLI failed: \(msg)"
-        case .apiFailed(let msg): return "Anthropic API failed: \(msg)"
+        case .apiFailed(let msg): return "API failed: \(msg)"
         case .timeout: return "The model took too long to respond."
         case .emptyResponse: return "The model returned an empty response."
         }
     }
 }
 
-/// Talks to Claude either via the Anthropic API (if an API key is configured)
-/// or via the locally installed `claude` CLI (billed to the user's existing subscription).
+/// Talks to an LLM via OpenRouter (if an API key is configured) or falls back to
+/// the locally installed `claude` CLI (billed to the user's existing subscription).
 private final class LockedFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var flag = false
     func set() { lock.lock(); flag = true; lock.unlock() }
     func get() -> Bool { lock.lock(); defer { lock.unlock() }; return flag }
+}
+
+struct LLMResult {
+    var text: String
+    /// Actual USD cost of this request (OpenRouter reports it per call; 0 for CLI).
+    var costUSD: Double = 0
 }
 
 final class LLMClient {
@@ -37,53 +43,87 @@ final class LLMClient {
     private var cachedCLIPath: String?
     private var cachedForConfiguredPath: String?
 
-    func complete(system: String, user: String, model: String, timeout: TimeInterval = 90) async throws -> String {
-        let apiKey = ConfigStore.shared.config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !apiKey.isEmpty {
-            return try await completeViaAPI(system: system, user: user, model: model, apiKey: apiKey, timeout: timeout)
+    /// If the chosen model errors or is rate-limited, OpenRouter silently retries
+    /// down this list (verified cheap + good at rewrite-style instruction following).
+    static let fallbackModels = [
+        "openai/gpt-oss-120b",
+        "qwen/qwen3-30b-a3b-instruct-2507",
+        "meta-llama/llama-3.3-70b-instruct",
+    ]
+
+    /// `model` is the claude CLI model; when OpenRouter is active the configured
+    /// OpenRouter model is used instead (one model for everything — simpler).
+    func complete(system: String, user: String, model: String, timeout: TimeInterval = 90) async throws -> LLMResult {
+        let orKey = ConfigStore.shared.config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !orKey.isEmpty {
+            let orModel = ConfigStore.shared.config.openRouterModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            return try await completeViaOpenRouter(
+                system: system, user: user,
+                model: orModel.isEmpty ? Config.default.openRouterModel : orModel,
+                apiKey: orKey, timeout: timeout
+            )
         }
-        return try await completeViaCLI(system: system, user: user, model: model, timeout: timeout)
+        let text = try await completeViaCLI(system: system, user: user, model: model, timeout: timeout)
+        return LLMResult(text: text, costUSD: 0)
     }
 
     var backendDescription: String {
-        let apiKey = ConfigStore.shared.config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !apiKey.isEmpty { return "Anthropic API" }
+        let orKey = ConfigStore.shared.config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !orKey.isEmpty { return "OpenRouter (\(ConfigStore.shared.config.openRouterModel))" }
         if let path = locateCLI() { return "claude CLI (\(path))" }
         return "none found"
     }
 
-    // MARK: - Anthropic API
+    // MARK: - OpenRouter
 
-    private func completeViaAPI(system: String, user: String, model: String, apiKey: String, timeout: TimeInterval) async throws -> String {
-        var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+    private func completeViaOpenRouter(system: String, user: String, model: String, apiKey: String, timeout: TimeInterval) async throws -> LLMResult {
+        var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/chat/completions")!)
         request.httpMethod = "POST"
         request.timeoutInterval = timeout
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Optional attribution headers (shown on OpenRouter's activity page).
+        request.setValue("https://github.com/drewbaskin/prompter", forHTTPHeaderField: "HTTP-Referer")
+        request.setValue("Prompter", forHTTPHeaderField: "X-OpenRouter-Title")
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
-            "max_tokens": 8000,
-            "system": system,
-            "messages": [["role": "user", "content": user]],
+            // If the chosen model is down or rate-limited, OpenRouter tries these.
+            "models": Self.fallbackModels.filter { $0 != model },
+            "max_completion_tokens": 8000,
+            "temperature": 0.2,
+            "messages": [
+                ["role": "system", "content": system],
+                ["role": "user", "content": user],
+            ],
         ]
+        // Reasoning-by-default models burn tokens/latency thinking about a rewrite job.
+        if model.contains("gpt-oss") || model.contains("gpt-5") || model.contains("thinking") {
+            body["reasoning"] = ["effort": "low"]
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw LLMError.apiFailed("no response") }
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         guard http.statusCode == 200 else {
-            let msg = String(data: data, encoding: .utf8) ?? "status \(http.statusCode)"
-            throw LLMError.apiFailed(String(msg.prefix(500)))
+            let apiMsg = ((json?["error"] as? [String: Any])?["message"] as? String)
+                ?? String(data: data, encoding: .utf8) ?? ""
+            throw LLMError.apiFailed("OpenRouter \(http.statusCode): \(String(apiMsg.prefix(300)))")
         }
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let content = json["content"] as? [[String: Any]] else {
-            throw LLMError.apiFailed("unexpected response shape")
+        // Some upstream failures still come back 200 with an error object.
+        if let err = (json?["error"] as? [String: Any])?["message"] as? String {
+            throw LLMError.apiFailed("OpenRouter: \(String(err.prefix(300)))")
         }
-        let text = content.compactMap { $0["text"] as? String }.joined()
+        guard let choices = json?["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let text = message["content"] as? String else {
+            throw LLMError.apiFailed("unexpected OpenRouter response shape")
+        }
+        let cost = ((json?["usage"] as? [String: Any])?["cost"] as? Double) ?? 0
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw LLMError.emptyResponse }
-        return trimmed
+        return LLMResult(text: trimmed, costUSD: cost)
     }
 
     // MARK: - claude CLI

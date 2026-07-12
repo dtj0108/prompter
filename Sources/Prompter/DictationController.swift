@@ -13,6 +13,7 @@ final class DictationController {
         var mode: DictationMode
         var context: FrontContext
         var startedAt: Date
+        var handsFree: Bool = false
     }
 
     private var session: Session?
@@ -23,8 +24,8 @@ final class DictationController {
     private var sessionGen = 0
 
     func start() {
-        hotkeys.onBegin = { [weak self] mode in
-            DispatchQueue.main.async { self?.beginSession(mode: mode) }
+        hotkeys.onBegin = { [weak self] mode, handsFree in
+            DispatchQueue.main.async { self?.beginSession(mode: mode, handsFree: handsFree) }
         }
         hotkeys.onCommit = { [weak self] in
             DispatchQueue.main.async { self?.commitSession() }
@@ -73,7 +74,7 @@ final class DictationController {
 
     // MARK: - Session lifecycle
 
-    private func beginSession(mode: DictationMode) {
+    private func beginSession(mode: DictationMode, handsFree: Bool = false) {
         guard !isPaused else {
             HUD.shared.flash(.failure("Prompter is paused"))
             return
@@ -95,7 +96,7 @@ final class DictationController {
         }
 
         let context = ContextDetector.capture()
-        session = Session(mode: mode, context: context, startedAt: Date())
+        session = Session(mode: mode, context: context, startedAt: Date(), handsFree: handsFree)
         sessionGen += 1
         let gen = sessionGen
         playSound("Pop")
@@ -112,7 +113,7 @@ final class DictationController {
                     self?.engine.feed(buffer)
                 }
                 try recorder.start()
-                HUD.shared.show(.listening(mode))
+                HUD.shared.show(.listening(mode, handsFree: handsFree))
 
                 let maxSec = Double(ConfigStore.shared.config.maxRecordingSec)
                 let work = DispatchWorkItem { [weak self] in self?.commitSession() }
@@ -170,7 +171,7 @@ final class DictationController {
                 return
             }
 
-            let (finalText, llmMs, usedLLM) = await self.transform(transcript: transcript, session: current)
+            let (finalText, llmMs, usedLLM, costUSD) = await self.transform(transcript: transcript, session: current)
 
             await MainActor.run {
                 // Don't fire a synthetic ⌘V into a different app than the one dictated
@@ -196,7 +197,8 @@ final class DictationController {
                     words: words,
                     sttMs: sttMs,
                     llmMs: llmMs,
-                    engine: "apple-speechanalyzer"
+                    engine: "apple-speechanalyzer",
+                    costUSD: costUSD
                 ))
 
                 switch pasteResult {
@@ -224,9 +226,9 @@ final class DictationController {
 
     // MARK: - Transform
 
-    /// Returns (finalText, llmMs, usedLLM). Never loses the transcript: falls back to
-    /// dictionary-corrected raw text if the LLM is disabled or fails.
-    private func transform(transcript: String, session: Session) async -> (String, Int, Bool) {
+    /// Returns (finalText, llmMs, usedLLM, costUSD). Never loses the transcript: falls
+    /// back to dictionary-corrected raw text if the LLM is disabled or fails.
+    private func transform(transcript: String, session: Session) async -> (String, Int, Bool, Double) {
         let config = ConfigStore.shared.config
         let dictionary = DictionaryStore.shared.entries.filter { !$0.phrase.isEmpty }
 
@@ -235,10 +237,15 @@ final class DictationController {
         let model: String
         switch session.mode {
         case .dictate:
-            guard config.llmCleanupEnabled else {
-                return (DictionaryStore.shared.applyRawCorrections(to: transcript), 0, false)
+            // Whole utterance is a snippet trigger ("my email address") → expand
+            // instantly, no AI round-trip.
+            if let snippet = SnippetStore.shared.exactMatch(for: transcript) {
+                return (snippet.expansion, 0, true, 0)
             }
-            system = Prompts.cleanupSystemPrompt(context: session.context, style: StyleStore.shared.style, dictionary: dictionary)
+            guard config.llmCleanupEnabled else {
+                return (DictionaryStore.shared.applyRawCorrections(to: transcript), 0, false, 0)
+            }
+            system = Prompts.cleanupSystemPrompt(context: session.context, style: StyleStore.shared.style, dictionary: dictionary, snippets: SnippetStore.shared.snippets)
             user = Prompts.cleanupUserPrompt(transcript: transcript)
             model = config.cleanupModel
         case .prompt:
@@ -251,11 +258,11 @@ final class DictationController {
         do {
             let result = try await LLMClient.shared.complete(system: system, user: user, model: model)
             let ms = Int(Date().timeIntervalSince(llmStart) * 1000)
-            return (result, ms, true)
+            return (result.text, ms, true, result.costUSD)
         } catch {
             Log.write("llm transform failed (\(session.mode.rawValue)): \(error)")
             let ms = Int(Date().timeIntervalSince(llmStart) * 1000)
-            return (DictionaryStore.shared.applyRawCorrections(to: transcript), ms, false)
+            return (DictionaryStore.shared.applyRawCorrections(to: transcript), ms, false, 0)
         }
     }
 

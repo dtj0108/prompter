@@ -28,7 +28,7 @@ enum HeadlessCLI {
                     user: "Health check.",
                     model: ConfigStore.shared.config.cleanupModel
                 )
-                print(reply)
+                print(reply.text)
             }
             return true
 
@@ -46,7 +46,7 @@ enum HeadlessCLI {
                     user: Prompts.cleanupUserPrompt(transcript: args[2]),
                     model: ConfigStore.shared.config.cleanupModel
                 )
-                print(reply)
+                print(reply.text)
             }
             return true
 
@@ -59,7 +59,7 @@ enum HeadlessCLI {
                     user: Prompts.promptModeUserPrompt(transcript: args[2]),
                     model: ConfigStore.shared.config.promptModel
                 )
-                print(reply)
+                print(reply.text)
             }
             return true
 

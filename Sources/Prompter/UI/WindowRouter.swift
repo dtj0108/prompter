@@ -59,4 +59,20 @@ final class WindowRouter: NSObject, NSWindowDelegate {
             SettingsView().environmentObject(ConfigStore.shared)
         }
     }
+
+    func openSnippets() {
+        open(key: "snippets", title: "Snippets", size: NSSize(width: 620, height: 440)) {
+            SnippetsView().environmentObject(SnippetStore.shared)
+        }
+    }
+
+    func openOnboarding() {
+        open(key: "onboarding", title: "Welcome to Prompter", size: NSSize(width: 560, height: 540)) {
+            OnboardingView().environmentObject(ConfigStore.shared)
+        }
+    }
+
+    func closeOnboarding() {
+        windows["onboarding"]?.close()
+    }
 }

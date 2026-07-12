@@ -73,8 +73,16 @@ private struct ContextEditor: View {
                         ListField(placeholder: "gmail, inbox, …", list: $ctx.titleKeywords)
                     }
                 }
-                Text("Tone instructions")
-                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Text("Tone instructions")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    HStack(spacing: 4) {
+                        presetButton("Formal", StylePresets.formal)
+                        presetButton("Casual", StylePresets.casual)
+                        presetButton("Very casual", StylePresets.veryCasual)
+                    }
+                }
                 TextEditor(text: $ctx.instructions)
                     .font(.body)
                     .frame(minHeight: 56)
@@ -83,4 +91,16 @@ private struct ContextEditor: View {
             .padding(6)
         }
     }
+
+    private func presetButton(_ label: String, _ text: String) -> some View {
+        Button(label) { ctx.instructions = text }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+    }
+}
+
+enum StylePresets {
+    static let formal = "Full sentences with proper capitalization and punctuation. Professional and polished, but still human. No slang, no emojis."
+    static let casual = "Relaxed and friendly, like talking to someone you know. Contractions are fine. Normal capitalization, lighter punctuation. Keep it brief."
+    static let veryCasual = "lowercase, minimal punctuation, texting style. short and loose. no formal phrasing. emojis only if dictated."
 }

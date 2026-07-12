@@ -45,11 +45,13 @@ enum HotkeyKey: String, CaseIterable, Identifiable {
     }
 }
 
-/// Hold-to-talk on a right-side modifier key.
+/// Hold-to-talk (hold key, talk, release) and hands-free (tap key, talk as long as
+/// you want, tap again to finish) on a right-side modifier key.
 /// Passive (never swallows events): holding the key alone does nothing system-wide,
 /// and if the user presses any other key mid-hold we abort so normal shortcuts pass through.
 final class HotkeyMonitor {
-    var onBegin: ((DictationMode) -> Void)?
+    /// (mode, handsFree)
+    var onBegin: ((DictationMode, Bool) -> Void)?
     var onCommit: (() -> Void)?
     var onAbort: (() -> Void)?
 
@@ -57,6 +59,8 @@ final class HotkeyMonitor {
         case idle
         case pending(mode: DictationMode, keyCode: UInt16)
         case active(mode: DictationMode, keyCode: UInt16)
+        /// Hands-free: recording continues after the tap; next tap of the same key commits.
+        case latched(mode: DictationMode, keyCode: UInt16)
     }
 
     private var state: State = .idle
@@ -117,18 +121,32 @@ final class HotkeyMonitor {
                 return
             }
 
-        case .pending:
-            // Any modifier transition ends pending: the same key can't be pressed
-            // twice, so a same-key event is its release (a tap — ignore), and a
-            // different key means the user is chording a shortcut.
+        case .pending(let mode, let keyCode):
+            // The same key can't be pressed twice, so a same-key event before the hold
+            // threshold is its release — a TAP. A different key means a shortcut chord.
             holdTimer?.cancel()
-            state = .idle
+            if code == keyCode, ConfigStore.shared.config.tapToLockEnabled {
+                state = .latched(mode: mode, keyCode: keyCode)
+                onBegin?(mode, true)
+            } else {
+                state = .idle
+            }
 
         case .active(_, let keyCode):
             // A second event for the held key is necessarily its release. Judging by
             // keyCode (not aggregate flags) keeps this correct when the same-named
             // modifier on the other side of the keyboard is also down.
             if code == keyCode {
+                state = .idle
+                onCommit?()
+            }
+
+        case .latched(_, let keyCode):
+            // Next PRESS of the same key (flag present) finishes the hands-free session.
+            // Its paired release event arrives in .idle with the flag absent and is
+            // ignored by the idle guard there.
+            if code == keyCode, let key = HotkeyKey.allCases.first(where: { $0.keyCode == code }),
+               flags.contains(key.flag) {
                 state = .idle
                 onCommit?()
             }
@@ -152,6 +170,13 @@ final class HotkeyMonitor {
                 state = .idle
                 onAbort?()
             }
+
+        case .latched:
+            // Hands-free survives typing and clicking around — only Esc cancels.
+            if event.keyCode == 53 {
+                state = .idle
+                onAbort?()
+            }
         }
     }
 
@@ -163,7 +188,7 @@ final class HotkeyMonitor {
             guard let self else { return }
             if case .pending(let mode, let keyCode) = self.state {
                 self.state = .active(mode: mode, keyCode: keyCode)
-                self.onBegin?(mode)
+                self.onBegin?(mode, false)
             }
         }
         holdTimer = work

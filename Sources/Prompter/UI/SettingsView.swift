@@ -12,7 +12,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Hotkeys (hold to talk, release to insert)") {
+            Section("Hotkeys") {
                 Picker("Dictation", selection: $store.config.dictationHotkey) {
                     ForEach(HotkeyKey.allCases) { key in
                         Text(key.display).tag(key.rawValue)
@@ -23,6 +23,9 @@ struct SettingsView: View {
                         Text(key.display).tag(key.rawValue)
                     }
                 }
+                Toggle("Tap for hands-free (tap again to finish)", isOn: $store.config.tapToLockEnabled)
+                Text("Hold = push-to-talk: hold the key, speak, release to insert. Tap = hands-free: tap once, talk as long as you want, tap again when done. Esc cancels. Changes apply immediately.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if store.config.dictationHotkey == store.config.promptHotkey {
                     Text("⚠️ Both modes are on the same key — Prompt Mode will never trigger.")
                         .font(.caption).foregroundStyle(.orange)
@@ -34,13 +37,35 @@ struct SettingsView: View {
             }
 
             Section("AI cleanup") {
-                Toggle("Clean up dictation with Claude", isOn: $store.config.llmCleanupEnabled)
+                Toggle("Clean up dictation with AI", isOn: $store.config.llmCleanupEnabled)
                 Text("Off = raw transcript with dictionary corrections only.")
                     .font(.caption).foregroundStyle(.secondary)
-                TextField("Cleanup model", text: $store.config.cleanupModel)
-                TextField("Prompt Mode model", text: $store.config.promptModel)
-                SecureField("Anthropic API key (optional — faster)", text: $store.config.apiKey)
-                TextField("claude CLI path (blank = auto-detect)", text: $store.config.claudeCLIPath)
+                SecureField("OpenRouter API key (sk-or-…)", text: $store.config.openRouterKey)
+                HStack {
+                    TextField("Model", text: $store.config.openRouterModel)
+                    Menu("Suggested") {
+                        Button("google/gemini-2.5-flash-lite — default, ~$1/mo") {
+                            store.config.openRouterModel = "google/gemini-2.5-flash-lite"
+                        }
+                        Button("openai/gpt-oss-120b — cheapest, ~$0.35/mo") {
+                            store.config.openRouterModel = "openai/gpt-oss-120b"
+                        }
+                        Button("qwen/qwen3-30b-a3b-instruct-2507 — ~$0.40/mo") {
+                            store.config.openRouterModel = "qwen/qwen3-30b-a3b-instruct-2507"
+                        }
+                        Button("meta-llama/llama-3.3-70b-instruct — ~$0.75/mo") {
+                            store.config.openRouterModel = "meta-llama/llama-3.3-70b-instruct"
+                        }
+                        Button("google/gemma-4-31b-it:free — free tier") {
+                            store.config.openRouterModel = "google/gemma-4-31b-it:free"
+                        }
+                    }
+                    .fixedSize()
+                }
+                Link("Get a key at openrouter.ai/keys", destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                    .font(.caption)
+                Text("Monthly estimates assume ~150 dictations/day. “:free” models cost nothing but are capped at 50 requests/day (1,000/day after a one-time $10 credit top-up) and may let the provider train on your text — paid models are private and still pennies.")
+                    .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Backend in use", value: LLMClient.shared.backendDescription)
                 HStack {
                     Button(testing ? "Testing…" : "Test AI backend") {
@@ -51,6 +76,11 @@ struct SettingsView: View {
                         Text(testResult).font(.caption)
                             .foregroundStyle(testResult.hasPrefix("✓") ? .green : .red)
                     }
+                }
+                DisclosureGroup("Fallback: Claude CLI (used when no OpenRouter key)") {
+                    TextField("Cleanup model", text: $store.config.cleanupModel)
+                    TextField("Prompt Mode model", text: $store.config.promptModel)
+                    TextField("claude CLI path (blank = auto-detect)", text: $store.config.claudeCLIPath)
                 }
             }
 
@@ -82,6 +112,9 @@ struct SettingsView: View {
                 }
                 Text("Microphone = hearing you. Accessibility = watching for your hotkey, pressing ⌘V for you, and reading window titles.")
                     .font(.caption).foregroundStyle(.secondary)
+                Button("Open Setup Assistant…") {
+                    WindowRouter.shared.openOnboarding()
+                }
             }
 
             Section("Behavior") {
@@ -144,7 +177,7 @@ struct SettingsView: View {
                     timeout: 60
                 )
                 await MainActor.run {
-                    testResult = reply.contains("OK") ? "✓ Working" : "✓ Replied: \(reply.prefix(40))"
+                    testResult = reply.text.contains("OK") ? "✓ Working" : "✓ Replied: \(reply.text.prefix(40))"
                     testing = false
                 }
             } catch {

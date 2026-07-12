@@ -3,7 +3,7 @@ import SwiftUI
 
 enum HUDState: Equatable {
     case idle
-    case listening(DictationMode)
+    case listening(DictationMode, handsFree: Bool = false)
     case processing(DictationMode)
     case success(String)
     case failure(String)
@@ -186,13 +186,23 @@ struct HUDView: View {
         case .idle:
             EmptyView()
 
-        case .listening(let mode):
+        case .listening(let mode, let handsFree):
             HStack(spacing: 10) {
                 Circle()
                     .fill(accent(mode))
                     .frame(width: 8, height: 8)
                 Waveform(levels: model.levels, tint: .white)
                     .frame(width: 150, height: 26)
+                if handsFree {
+                    HStack(spacing: 3) {
+                        Image(systemName: "lock.fill").font(.system(size: 8))
+                        Text("tap key to finish").font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundStyle(.white.opacity(0.75))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.12), in: Capsule())
+                }
                 if mode == .prompt { badge("PROMPT") }
             }
 

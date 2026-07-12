@@ -4,11 +4,14 @@ import Foundation
 
 struct Config: Codable {
     var apiKey: String = ""
+    var openRouterKey: String = ""
+    var openRouterModel: String = "google/gemini-2.5-flash-lite"
     var cleanupModel: String = "claude-haiku-4-5-20251001"
     var promptModel: String = "claude-sonnet-5"
     var claudeCLIPath: String = ""
     var dictationHotkey: String = "rightOption"
     var promptHotkey: String = "rightCommand"
+    var tapToLockEnabled: Bool = true
     var llmCleanupEnabled: Bool = true
     var holdThresholdMs: Int = 180
     var pasteRestoreDelayMs: Int = 800
@@ -16,6 +19,7 @@ struct Config: Codable {
     var soundsEnabled: Bool = true
     var showIdleIndicator: Bool = true
     var launchAtLogin: Bool = false
+    var onboardingDone: Bool = false
 
     static let `default` = Config()
 }
@@ -27,6 +31,14 @@ struct DictEntry: Codable, Identifiable, Equatable {
     var phrase: String
     var soundsLike: [String] = []
     var note: String = ""
+}
+
+// MARK: - Snippets
+
+struct Snippet: Codable, Identifiable, Equatable {
+    var id: UUID = UUID()
+    var trigger: String
+    var expansion: String
 }
 
 // MARK: - Style
@@ -107,6 +119,7 @@ struct InsightEvent: Codable, Identifiable {
     var sttMs: Int
     var llmMs: Int
     var engine: String
+    var costUSD: Double = 0
 }
 
 // MARK: - Modes
@@ -122,15 +135,20 @@ enum DictationMode: String {
 
 extension Config {
     private enum CodingKeys: String, CodingKey {
-        case apiKey, cleanupModel, promptModel, claudeCLIPath, dictationHotkey, promptHotkey
+        case apiKey, openRouterKey, openRouterModel, cleanupModel, promptModel, claudeCLIPath
+        case dictationHotkey, promptHotkey, tapToLockEnabled
         case llmCleanupEnabled, holdThresholdMs, pasteRestoreDelayMs, maxRecordingSec
-        case soundsEnabled, showIdleIndicator, launchAtLogin
+        case soundsEnabled, showIdleIndicator, launchAtLogin, onboardingDone
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Config()
         apiKey = (try? c.decodeIfPresent(String.self, forKey: .apiKey)) ?? nil ?? d.apiKey
+        openRouterKey = (try? c.decodeIfPresent(String.self, forKey: .openRouterKey)) ?? nil ?? d.openRouterKey
+        openRouterModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterModel)) ?? nil ?? d.openRouterModel
+        tapToLockEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .tapToLockEnabled)) ?? nil ?? d.tapToLockEnabled
+        onboardingDone = (try? c.decodeIfPresent(Bool.self, forKey: .onboardingDone)) ?? nil ?? d.onboardingDone
         cleanupModel = (try? c.decodeIfPresent(String.self, forKey: .cleanupModel)) ?? nil ?? d.cleanupModel
         promptModel = (try? c.decodeIfPresent(String.self, forKey: .promptModel)) ?? nil ?? d.promptModel
         claudeCLIPath = (try? c.decodeIfPresent(String.self, forKey: .claudeCLIPath)) ?? nil ?? d.claudeCLIPath
@@ -155,6 +173,17 @@ extension DictEntry {
         phrase = (try? c.decodeIfPresent(String.self, forKey: .phrase)) ?? nil ?? ""
         soundsLike = (try? c.decodeIfPresent([String].self, forKey: .soundsLike)) ?? nil ?? []
         note = (try? c.decodeIfPresent(String.self, forKey: .note)) ?? nil ?? ""
+    }
+}
+
+extension Snippet {
+    private enum CodingKeys: String, CodingKey { case id, trigger, expansion }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decodeIfPresent(UUID.self, forKey: .id)) ?? nil ?? UUID()
+        trigger = (try? c.decodeIfPresent(String.self, forKey: .trigger)) ?? nil ?? ""
+        expansion = (try? c.decodeIfPresent(String.self, forKey: .expansion)) ?? nil ?? ""
     }
 }
 
@@ -186,7 +215,7 @@ extension StyleConfig {
 
 extension InsightEvent {
     private enum CodingKeys: String, CodingKey {
-        case id, ts, app, bundleId, context, mode, audioSec, words, sttMs, llmMs, engine
+        case id, ts, app, bundleId, context, mode, audioSec, words, sttMs, llmMs, engine, costUSD
     }
 
     init(from decoder: Decoder) throws {
@@ -202,5 +231,6 @@ extension InsightEvent {
         sttMs = (try? c.decodeIfPresent(Int.self, forKey: .sttMs)) ?? nil ?? 0
         llmMs = (try? c.decodeIfPresent(Int.self, forKey: .llmMs)) ?? nil ?? 0
         engine = (try? c.decodeIfPresent(String.self, forKey: .engine)) ?? nil ?? ""
+        costUSD = (try? c.decodeIfPresent(Double.self, forKey: .costUSD)) ?? nil ?? 0
     }
 }

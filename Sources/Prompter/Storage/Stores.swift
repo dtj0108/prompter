@@ -81,6 +81,47 @@ final class DictionaryStore: ObservableObject {
     }
 }
 
+// MARK: - Snippets
+
+final class SnippetStore: ObservableObject {
+    static let shared = SnippetStore()
+    @Published var snippets: [Snippet] {
+        didSet { saveJSON(snippets, to: Paths.snippetsFile) }
+    }
+
+    private init() {
+        let seed: [Snippet] = [
+            Snippet(trigger: "my email address", expansion: "hello@contractorcalls.ai"),
+            Snippet(trigger: "my website", expansion: "https://contractorcalls.ai"),
+        ]
+        if FileManager.default.fileExists(atPath: Paths.snippetsFile.path) {
+            snippets = loadJSON(Paths.snippetsFile, fallback: seed)
+        } else {
+            snippets = seed
+            saveJSON(seed, to: Paths.snippetsFile)
+        }
+    }
+
+    /// If the whole utterance IS a snippet trigger ("my email address"), return it —
+    /// the expansion gets pasted directly, no LLM round-trip needed.
+    func exactMatch(for transcript: String) -> Snippet? {
+        let normalized = Self.normalize(transcript)
+        guard !normalized.isEmpty else { return nil }
+        return snippets.first {
+            !$0.expansion.isEmpty && Self.normalize($0.trigger) == normalized
+        }
+    }
+
+    /// Lowercased, punctuation stripped, whitespace collapsed — so "My email address."
+    /// spoken aloud matches the trigger "my email address".
+    static func normalize(_ s: String) -> String {
+        s.lowercased()
+            .filter { $0.isLetter || $0.isNumber || $0.isWhitespace }
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+    }
+}
+
 // MARK: - Style
 
 final class StyleStore: ObservableObject {
@@ -161,6 +202,9 @@ final class InsightsStore: ObservableObject {
         guard let start = Calendar.current.date(byAdding: .day, value: -6, to: Calendar.current.startOfDay(for: Date())) else { return 0 }
         return events.filter { $0.ts >= start }.reduce(0) { $0 + $1.words }
     }
+
+    /// Actual AI spend (reported per-request by OpenRouter; 0 when on the claude CLI).
+    var totalCostUSD: Double { events.reduce(0) { $0 + $1.costUSD } }
 
     /// Estimated seconds saved vs typing at 40 WPM.
     var totalTimeSavedSec: Double {

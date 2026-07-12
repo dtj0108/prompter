@@ -20,6 +20,11 @@ struct InsightsView: View {
                     StatCard(title: "Time saved", value: timeSavedText, unit: "vs typing 40 WPM")
                     StatCard(title: "Streak", value: "\(store.streakDays)", unit: store.streakDays == 1 ? "day" : "days")
                     StatCard(title: "Dictations", value: "\(store.events.count)", unit: "total")
+                    StatCard(
+                        title: "AI cost",
+                        value: store.totalCostUSD < 0.005 ? "$0" : String(format: "$%.2f", store.totalCostUSD),
+                        unit: "all time"
+                    )
                 }
 
                 GroupBox("Words per day — last 14 days") {

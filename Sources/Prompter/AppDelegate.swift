@@ -14,11 +14,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HUD.shared.start()
         Log.write("Prompter launched")
 
-        // First-run: nudge for permissions.
-        if !Recorder.micAuthorized() || !AXIsProcessTrusted() {
-            let options = ["AXTrustedCheckOptionPrompt" as CFString as String: true] as CFDictionary
-            _ = AXIsProcessTrustedWithOptions(options)
-            Task { _ = await Recorder.requestMicAccess() }
+        // First run: the setup assistant walks through permissions and the AI key.
+        if !ConfigStore.shared.config.onboardingDone {
+            WindowRouter.shared.openOnboarding()
         }
     }
 
@@ -45,9 +43,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
 
         menu.addItem(makeItem("Dictionary…", #selector(openDictionary), "d"))
+        menu.addItem(makeItem("Snippets…", #selector(openSnippets), "s"))
         menu.addItem(makeItem("Style…", #selector(openStyle), "t"))
         menu.addItem(makeItem("Insights…", #selector(openInsights), "i"))
         menu.addItem(makeItem("Settings…", #selector(openSettings), ","))
+
+        menu.addItem(.separator())
+
+        menu.addItem(makeItem("Setup Assistant…", #selector(openOnboarding), ""))
 
         menu.addItem(.separator())
 
@@ -69,7 +72,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let config = ConfigStore.shared.config
         let dictate = HotkeyKey(rawValue: config.dictationHotkey)?.shortDisplay ?? "?"
         let prompt = HotkeyKey(rawValue: config.promptHotkey)?.shortDisplay ?? "?"
-        return "Hold \(dictate) to dictate  •  Hold \(prompt) for Prompt Mode"
+        let verb = config.tapToLockEnabled ? "Hold or tap" : "Hold"
+        return "\(verb) \(dictate) to dictate  •  \(prompt) for Prompt Mode"
     }
 
     @objc private func togglePause() {
@@ -85,9 +89,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openDictionary() { WindowRouter.shared.openDictionary() }
+    @objc private func openSnippets() { WindowRouter.shared.openSnippets() }
     @objc private func openStyle() { WindowRouter.shared.openStyle() }
     @objc private func openInsights() { WindowRouter.shared.openInsights() }
     @objc private func openSettings() { WindowRouter.shared.openSettings() }
+    @objc private func openOnboarding() { WindowRouter.shared.openOnboarding() }
 }
 
 extension AppDelegate: NSMenuDelegate {

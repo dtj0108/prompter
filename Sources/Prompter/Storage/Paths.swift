@@ -16,6 +16,7 @@ enum Paths {
 
     static var configFile: URL { appSupport.appendingPathComponent("config.json") }
     static var dictionaryFile: URL { appSupport.appendingPathComponent("dictionary.json") }
+    static var snippetsFile: URL { appSupport.appendingPathComponent("snippets.json") }
     static var stylesFile: URL { appSupport.appendingPathComponent("styles.json") }
     static var historyFile: URL { appSupport.appendingPathComponent("history.jsonl") }
     static var promptModeFile: URL { promptsDir.appendingPathComponent("prompt-mode.md") }

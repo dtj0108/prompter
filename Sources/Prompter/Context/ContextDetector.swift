@@ -56,6 +56,25 @@ enum ContextDetector {
         return nil
     }
 
+    /// Is there a blinking text cursor in the frontmost app right now?
+    /// (The focused AX element exposing a selected-text-range is the practical
+    /// signal for "this element accepts typed text".)
+    static func focusedElementAcceptsText() -> Bool {
+        guard AXIsProcessTrusted(),
+              let app = NSWorkspace.shared.frontmostApplication else { return false }
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(appElement, 0.3)
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+              let el = focused,
+              CFGetTypeID(el) == AXUIElementGetTypeID() else { return false }
+        let element = el as! AXUIElement
+        var names: CFArray?
+        guard AXUIElementCopyAttributeNames(element, &names) == .success,
+              let attrs = names as? [String] else { return false }
+        return attrs.contains(kAXSelectedTextRangeAttribute as String)
+    }
+
     private static func focusedWindowTitle(pid: pid_t) -> String? {
         guard AXIsProcessTrusted() else { return nil }
         let appElement = AXUIElementCreateApplication(pid)

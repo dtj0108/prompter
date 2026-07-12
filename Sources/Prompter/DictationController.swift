@@ -174,16 +174,19 @@ final class DictationController {
             let (finalText, llmMs, usedLLM, costUSD) = await self.transform(transcript: transcript, session: current)
 
             await MainActor.run {
-                // Don't fire a synthetic ⌘V into a different app than the one dictated
-                // into — the LLM step can take long enough for the user to switch away.
+                // Paste wherever the user's cursor is NOW: same app as when they
+                // dictated, or a different app that has a blinking text cursor
+                // (they clicked into it while we were polishing). Only refuse when
+                // the app changed AND there's no text field focused there.
                 let front = NSWorkspace.shared.frontmostApplication
                 let sameApp = current.context.bundleId.isEmpty
                     || (front?.bundleIdentifier == current.context.bundleId
                         && front?.processIdentifier == current.context.pid)
+                let canPasteHere = sameApp || ContextDetector.focusedElementAcceptsText()
 
-                var pasteResult = Paster.insert(finalText, allowPaste: sameApp)
-                if !sameApp {
-                    pasteResult = .clipboardOnly(reason: "App changed — text is on your clipboard (⌘V)")
+                var pasteResult = Paster.insert(finalText, allowPaste: canPasteHere)
+                if !canPasteHere {
+                    pasteResult = .clipboardOnly(reason: "No text cursor — ⌘V to paste")
                 }
                 let words = finalText.split(whereSeparator: { $0.isWhitespace }).count
 

@@ -130,35 +130,27 @@ struct OnboardingView: View {
             statusRow(granted: axGranted, label: axGranted ? "Accessibility granted" : "Accessibility needed")
 
             if !axGranted {
-                Button("Grant Accessibility") { promptAccessibility() }
+                Button("Grant Accessibility") { resetAndPromptAccessibility() }
                 .buttonStyle(.borderedProminent)
                 Text("In the dialog, click “Open System Settings”, then turn ON the switch next to Prompter in the Accessibility list. This screen updates by itself once it's on.")
                     .font(.callout).foregroundStyle(.secondary)
-                Text("Prompter already ON in that list but still not working? The old grant went stale when the app was updated — this clears it so you can grant it fresh.")
-                    .font(.callout).foregroundStyle(.secondary)
-                HStack {
-                    Button("Fix Stale Permission") { fixStaleAccessibility() }
-                    Button("Open System Settings → Accessibility") {
-                        openPrivacyPane("Privacy_Accessibility")
-                    }
+                Button("Open System Settings → Accessibility") {
+                    openPrivacyPane("Privacy_Accessibility")
                 }
             } else {
                 Text("One more macOS dialog may appear the very first time text is inserted (“Prompter would like to paste”) — choose “Always Allow”.")
                     .font(.callout).foregroundStyle(.secondary)
             }
         }
-        .onAppear { if !axGranted { promptAccessibility() } }
-    }
-
-    private func promptAccessibility() {
-        let options = ["AXTrustedCheckOptionPrompt" as CFString as String: true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
+        .onAppear { if !axGranted { resetAndPromptAccessibility() } }
     }
 
     /// A reinstalled/re-signed binary invalidates the existing Accessibility grant:
-    /// System Settings still shows Prompter ON but AXIsProcessTrusted() is false.
-    /// Clear our own TCC entry so a fresh grant dialog can appear.
-    private func fixStaleAccessibility() {
+    /// System Settings still shows Prompter ON but AXIsProcessTrusted() is false,
+    /// and flipping the dead switch does nothing. Clearing our TCC entry first is
+    /// harmless on a fresh install and the only thing that works after an update,
+    /// so granting ALWAYS resets before prompting.
+    private func resetAndPromptAccessibility() {
         DispatchQueue.global().async {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
@@ -170,7 +162,10 @@ struct OnboardingView: View {
             } catch {
                 Log.write("tccutil reset failed: \(error)")
             }
-            DispatchQueue.main.async { promptAccessibility() }
+            DispatchQueue.main.async {
+                let options = ["AXTrustedCheckOptionPrompt" as CFString as String: true] as CFDictionary
+                _ = AXIsProcessTrustedWithOptions(options)
+            }
         }
     }
 

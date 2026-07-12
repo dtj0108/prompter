@@ -147,32 +147,33 @@ enum Prompts {
             return """
             <assistance_level>
             The user chose LIGHT help for this dictation. This overrides every earlier instruction that \
-            adds material, but it does not override the required output template. Fill every required \
-            section concisely without adding execution steps, repository-inspection requirements, \
-            safeguards, finish lines, or agent guidance the user did not say. Your whole job is to clean \
+            adds material, but it does not override the core prompt structure. Use only the sections that \
+            are applicable; do not add execution steps, repository-inspection requirements, safeguards, \
+            finish lines, or agent guidance the user did not say. Your whole job is to clean \
             the transcript into a well-written prompt: fix wording and punctuation, remove filler, resolve \
             self-corrections, and keep the user's own words, order, tone, and length as much as possible. \
-            Use “Not specified.” where the template requires a placeholder. The result should read like \
-            the user carefully organized their own request — nothing more.
+            Never add placeholder text for information the user did not supply. The result should read \
+            like the user carefully organized their own request — nothing more.
             </assistance_level>
             """
         case .medium:
             return """
             <assistance_level>
             The user chose MEDIUM help for this dictation. Sharpen and organize what they said: a clear \
-            opening verb and precise wording within the required output template. You may add at most one \
+            opening verb and precise wording within the modular prompt structure. You may add at most one \
             brief, generic execution note (such as inspecting the relevant code first, or verifying the \
             change) when clearly useful — skip the base prompt's fuller coding contract. Do NOT add \
             requirements, features, constraints, acceptance criteria, examples, or specifics the user did \
-            not say. Use “Not specified.” where the template requires a placeholder. When unsure whether \
-            the user would want an addition, leave it out.
+            not say. Omit inapplicable sections instead of using placeholders. When unsure whether the user \
+            would want an addition, leave it out.
             </assistance_level>
             """
         case .heavy:
             return """
             <assistance_level>
             The user chose HEAVY help for this dictation. Fully engineer the prompt: strong structure, \
-            using the required output template, explicit requirements derived from what was said, and \
+            using all applicable parts of the modular prompt structure, explicit requirements derived from \
+            what was said, and \
             thorough execution and verification guidance for the agent. You may fill small gaps with \
             reasonable assumptions, but mark each one clearly inside the prompt (for example a line \
             starting with "Assume:") so the user can spot and remove it. Even here, never present invented \
@@ -243,52 +244,60 @@ enum Prompts {
     entire response must be usable as the next instruction to a coding agent.
     </output_contract>
 
-    <required_output_template>
-    Every response must use these Markdown headings in this exact order. Replace the parenthetical guidance \
-    with the prompt's actual content; do not echo the guidance itself. Keep every section concise. Use \
-    “Not specified.” for an unspecified output format, structure, tone, or length. Omit **Conflict resolution** \
-    when there is no applicable conflict. Do not omit any other section.
+    <prompt_structure>
+    Use the following as a modular scaffold, not a form that must always be completely filled out. Every \
+    response must begin with a concise H1 title and include **Objective**. Include the remaining sections only \
+    when they add information that is applicable to the user's request. Never output parenthetical guidance, \
+    empty headings, “Not specified,” or other placeholder text. When sections are used, keep them in this order:
 
-    **Title**
-    (1 concise line)
+    # [Concise title]
 
-    **Role & stance**
-    (who the model is and how it should behave)
+    ## Role & stance
+    [Relevant expertise, perspective, and behavior. Omit if unnecessary.]
 
-    **Task**
-    (what the model must do)
+    ## Objective
+    [The exact outcome to produce, for whom, and what success looks like.]
 
-    **Context**
-    (only what the model needs to know)
+    ## Context
+    [Only the background necessary to complete the objective.]
 
-    **Inputs available**
-    (explicit list)
+    ## Available inputs
+    - [Files, data, tools, source material, or user-provided facts]
+    - [State what is authoritative and what may be incomplete]
 
-    **Output requirements**
-    (format, structure, tone, length — only if specified; otherwise placeholders)
+    ## Deliverable
+    [Required format, structure, tone, length, and level of detail. If unspecified, omit this section and let \
+    the coding agent use the clearest concise format appropriate to the task.]
 
-    **Constraints / Do-nots**
-    (bulleted)
+    ## Constraints
+    - [Requirements and boundaries]
+    - [Things not to do]
+    - [Facts or sources that must not be invented]
 
-    **Examples / References**
-    (include all examples verbatim)
+    ## Examples and references
+    [Include user-provided examples verbatim. Identify whether each is a style example, factual source, or \
+    strict pattern.]
 
-    **Execution checklist**
-    (short, factual verification list)
+    ## Ambiguity and assumptions
+    [Ask questions if missing information would materially change the result; otherwise proceed with minimal, \
+    explicit assumptions.]
 
-    **Conflict resolution**
-    (only if applicable)
+    ## Acceptance criteria
+    - [Observable requirement]
+    - [Observable requirement]
+    - [Final consistency or completeness check]
 
-    Preserve all user-provided examples and references verbatim inside **Examples / References**. Never invent \
-    an example or reference. If none were supplied, write “None provided.” Under **Inputs available**, give an \
-    explicit bullet list of the information, files, links, logs, code, assets, or other materials actually \
-    supplied or known to be available; write “None provided.” when there are none. Under **Output requirements**, \
-    always include separate Format, Structure, Tone, and Length lines, using “Not specified.” for each value \
-    the user did not specify. Use bullets under **Constraints / Do-nots** and checkbox bullets under \
-    **Execution checklist**. Under **Role & stance**, identify the task-appropriate role and how it should \
-    behave using only the requested scope and constraints; if no specialized role was supplied, use a \
-    concise generic coding-agent role rather than “Not specified.”
-    </required_output_template>
+    ## Instruction priority
+    [State task-specific precedence only when applicable. Otherwise follow higher-priority instructions, then \
+    the objective, constraints, references, and examples.]
+
+    Preserve every user-provided example and reference verbatim. Never invent one. Distinguish instructions \
+    to imitate from sources that only provide facts. Under **Available inputs**, list only information, files, \
+    links, logs, code, assets, tools, or other materials actually supplied or known to be available. Use bullets \
+    for multiple constraints and checkbox bullets for acceptance criteria when checkboxes help execution. Do not \
+    invent a specialized persona; include **Role & stance** only when expertise, perspective, or behavior \
+    materially affects the result.
+    </prompt_structure>
 
     <priorities>
     Apply these priorities in order:
@@ -343,8 +352,9 @@ enum Prompts {
     </coding_agent_optimization>
 
     <structure_and_scale>
-    - Always use the required output template. Scale the amount of content inside each section to complexity; \
-    a simple task should still be brief and free of boilerplate.
+    - Always use the modular scaffold. Scale the included sections and their detail to the task's complexity; \
+    a straightforward task will usually need only **Objective**, **Available inputs**, **Deliverable**, and \
+    **Constraints** beneath its title, and should remain brief and free of boilerplate.
     - Convert scattered requirements into concise bullets when useful. Use numbered steps only when order matters.
     - Preserve user-supplied code, logs, errors, schemas, and examples exactly; delimit them clearly from \
     instructions. Never manufacture examples.
@@ -367,6 +377,7 @@ enum Prompts {
         "e92c694f47087d36c9dd2ac742b64d86bd20120e98d094f906684d2b10186cbe", // coding prompt before required output template
         "502f53ff7fb89d7442e1fe74897c6e291768d48af7e617b50034973915b54564", // development template before strict output placeholders
         "db39fa0b5a9f6e4b65ab8766dd37c5a003274af7f637939d0f059318ae4645d7", // development template before default role guidance
+        "ac57b2a2424a3053c1633f75045e9e30c58514bf429407f75cc1f7813dd832e9", // rigid required-section template
     ]
 
     private static func isOutdatedShippedDefaultPrompt(_ prompt: String) -> Bool {

@@ -6,6 +6,20 @@ struct AIModelChoice: Identifiable, Equatable {
     let detail: String
 }
 
+enum TranscriptionModelCatalog {
+    static let choices: [AIModelChoice] = [
+        AIModelChoice(
+            id: OpenRouterTranscriber.defaultModel,
+            name: "Whisper Large V3 Turbo",
+            detail: "Fast · $0.04/hour"
+        ),
+    ]
+
+    static func choice(for id: String) -> AIModelChoice? {
+        choices.first { $0.id == id }
+    }
+}
+
 enum AIModelCatalog {
     static let choices: [AIModelChoice] = [
         AIModelChoice(id: "openrouter/free", name: "Free", detail: "OpenRouter free model router"),

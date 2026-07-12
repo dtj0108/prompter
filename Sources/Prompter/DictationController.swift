@@ -134,6 +134,7 @@ final class DictationController {
                 if gen == sessionGen {
                     session = nil
                     recorder.stop()
+                    recorder.discardRecording()
                     engine.cancel()
                     HUD.shared.flash(.failure("Couldn't start recording"))
                 }
@@ -149,11 +150,13 @@ final class DictationController {
         maxDurationTimer?.cancel()
 
         let audioSec = recorder.stop()
+        let recordingURL = recorder.takeRecordingURL()
         recorder.onBuffer = nil
         playSound("Tink")
 
         // Too-short accidental presses: throw away.
         if audioSec < 0.35 {
+            if let recordingURL { try? FileManager.default.removeItem(at: recordingURL) }
             busy = false
             engine.cancel()
             HUD.shared.hide()
@@ -163,15 +166,13 @@ final class DictationController {
         HUD.shared.show(.processing(current.mode))
 
         Task {
-            let sttStart = Date()
-            var transcript = ""
-            do {
-                transcript = try await engine.finish()
-            } catch {
-                Log.write("stt finish failed: \(error)")
+            defer {
+                if let recordingURL { try? FileManager.default.removeItem(at: recordingURL) }
             }
+            let sttStart = Date()
+            let transcription = await self.transcribe(recordingURL: recordingURL)
             let sttMs = Int(Date().timeIntervalSince(sttStart) * 1000)
-            transcript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            let transcript = transcription.text.trimmingCharacters(in: .whitespacesAndNewlines)
 
             guard !transcript.isEmpty else {
                 await MainActor.run {
@@ -182,7 +183,7 @@ final class DictationController {
             }
 
             let rawTranscript = transcript
-            let (finalText, llmMs, usedLLM, costUSD) = await self.transform(transcript: rawTranscript, session: current)
+            let (finalText, llmMs, usedLLM, cleanupCostUSD) = await self.transform(transcript: rawTranscript, session: current)
 
             await MainActor.run {
                 // Paste wherever the user's cursor is NOW: same app as when they
@@ -213,8 +214,8 @@ final class DictationController {
                     words: words,
                     sttMs: sttMs,
                     llmMs: llmMs,
-                    engine: "apple-speechanalyzer",
-                    costUSD: costUSD,
+                    engine: transcription.engine,
+                    costUSD: transcription.costUSD + cleanupCostUSD,
                     rawText: rawTranscript,
                     finalText: finalText
                 ))
@@ -237,12 +238,49 @@ final class DictationController {
         sessionGen += 1
         maxDurationTimer?.cancel()
         recorder.stop()
+        recorder.discardRecording()
         recorder.onBuffer = nil
         engine.cancel()
         HUD.shared.hide()
     }
 
     // MARK: - Transform
+
+    /// Whisper Turbo is the primary engine when OpenRouter is configured. The
+    /// Apple analyzer finalizes in parallel and is ready as an immediate local
+    /// fallback if the network request fails.
+    private func transcribe(recordingURL: URL?) async -> (text: String, costUSD: Double, engine: String) {
+        async let localTranscript = engine.finish()
+        let config = ConfigStore.shared.config
+        let hasOpenRouterKey = !config.openRouterKey
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        if hasOpenRouterKey, let recordingURL {
+            do {
+                let cloud = try await OpenRouterTranscriber.transcribeFile(
+                    recordingURL,
+                    model: config.openRouterTranscriptionModel
+                )
+                // Always let the parallel analyzer shut down cleanly before a
+                // new recording can start; its text is unused on cloud success.
+                _ = try? await localTranscript
+                return (
+                    cloud.text,
+                    cloud.costUSD,
+                    "openrouter/\(config.openRouterTranscriptionModel)"
+                )
+            } catch {
+                Log.write("OpenRouter transcription failed; using local Apple transcript: \(error)")
+            }
+        }
+
+        do {
+            return (try await localTranscript, 0, "apple-speechanalyzer")
+        } catch {
+            Log.write("local STT finish failed: \(error)")
+            return ("", 0, "apple-speechanalyzer")
+        }
+    }
 
     /// Returns (finalText, llmMs, usedLLM, costUSD). Never loses the transcript: falls
     /// back to dictionary-corrected raw text if the LLM is disabled or fails.

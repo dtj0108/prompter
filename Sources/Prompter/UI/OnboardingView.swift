@@ -285,7 +285,7 @@ struct OnboardingView: View {
     private var aiEngine: some View {
         VStack(alignment: .leading, spacing: 16) {
             header("🧠", "Connect the AI",
-                   "After transcription, an AI pass fixes wording, applies your Dictionary and Style, and powers Prompt Mode. Prompter uses OpenRouter — one key, any model, pennies a day.")
+                   "Prompter uses one OpenRouter key for fast Whisper transcription, optional cleanup and styling, and Prompt Mode. Apple's local transcription remains the automatic fallback.")
 
             VStack(alignment: .leading, spacing: 10) {
                 SecureField("OpenRouter API key (sk-or-…)", text: $store.config.openRouterKey)
@@ -303,10 +303,10 @@ struct OnboardingView: View {
                 }
             }
 
-            Text("Model: \(store.config.openRouterModel) — change it any time in Settings → AI cleanup.")
+            Text("Transcription: Whisper Large V3 Turbo — change models any time in Settings → AI models.")
                 .font(.callout).foregroundStyle(.secondary)
 
-            Text("No key? That's fine — skip this. Prompter falls back to your Claude Code subscription (claude CLI) if it's installed, or plain transcription with Dictionary corrections.")
+            Text("No key? That's fine — skip this. Speech stays on your Mac with Apple's transcriber; cleanup can use your Claude Code subscription (claude CLI) if installed, or fall back to Dictionary corrections.")
                 .font(.callout).foregroundStyle(.secondary)
         }
     }

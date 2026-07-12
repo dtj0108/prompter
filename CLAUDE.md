@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 **Prompter** — Drew's personal Wispr Flow replacement. A native macOS Dock dictation app: hold/tap a right-side modifier key, talk, and polished text is pasted at the cursor. Swift + SwiftUI, SwiftPM only (no Xcode project). Runs on macOS 26+, Apple Silicon.
 
-Pipeline: hotkey (`HotkeyMonitor`) → mic (`Recorder`) → on-device STT (`STT/Transcriber.swift`, macOS 26 `SpeechAnalyzer`/`SpeechTranscriber`) → AI cleanup (`LLM/LLMClient.swift`: OpenRouter if key set, else `claude` CLI, else raw dictionary corrections) → paste (`Output/Paster.swift`) → log (`InsightsStore`). Orchestrated by `DictationController`.
+Pipeline: hotkey (`HotkeyMonitor`) → mic (`Recorder`, which also writes a temporary 16 kHz mono WAV) → Whisper Turbo STT through `STT/OpenRouterTranscriber.swift` when an OpenRouter key is set, with macOS 26 `SpeechAnalyzer` running in parallel as the local fallback → optional AI cleanup (`LLM/LLMClient.swift`) → paste (`Output/Paster.swift`) → log (`InsightsStore`). Orchestrated by `DictationController`; temporary audio is deleted after each request.
 
 ## Build, install, test
 
@@ -17,6 +17,7 @@ open /Applications/Prompter.app
 
 # Headless verification (no mic/GUI needed):
 .build/release/Prompter --transcribe /tmp/prompter-test.aiff   # STT end-to-end
+.build/release/Prompter --transcribe-openrouter /tmp/test.wav  # OpenRouter Whisper STT
 .build/release/Prompter --test-llm                             # AI backend check
 .build/release/Prompter --test-cleanup "um so send the uh report"
 say -o /tmp/prompter-test.aiff "some words"                    # make test audio
@@ -38,7 +39,7 @@ After installing a rebuilt app: quit the running instance first (`pkill -x Promp
 
 All state in `~/Library/Application Support/Prompter/`: `config.json` (incl. OpenRouter key, chmod 600), `dictionary.json`, `snippets.json`, `styles.json`, `history.jsonl` (insights), `prompts/prompt-mode.md` (user-editable meta-prompt), `prompter.log` (read this first when debugging).
 
-OpenRouter default model: `openai/gpt-5.6-luna`; request sends a fallback `models` array; response `usage.cost` is logged per dictation into insights.
+OpenRouter transcription defaults to `openai/whisper-large-v3-turbo`; text cleanup defaults to `openrouter/free`; Prompt Mode has its own configured text model. STT and cleanup `usage.cost` values are both logged per dictation into insights.
 
 Public updates are built by `.github/workflows/publish-update.yml` on pushes to `main`. It publishes `Prompter.zip` plus `update.json` to GitHub Releases. `AppUpdater` checks the public repository embedded as `PrompterUpdateRepository`; never embed a GitHub token in the app.
 

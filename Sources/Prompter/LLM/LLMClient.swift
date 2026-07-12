@@ -83,11 +83,13 @@ final class LLMClient {
     var backendDescription: String {
         let orKey = ConfigStore.shared.config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !orKey.isEmpty {
+            let transcription = ConfigStore.shared.config.openRouterTranscriptionModel
             let cleanup = ConfigStore.shared.config.openRouterCleanupModel
             let prompt = ConfigStore.shared.config.openRouterModel
+            let transcriptionName = TranscriptionModelCatalog.choice(for: transcription)?.name ?? transcription
             let cleanupName = AIModelCatalog.choice(for: cleanup)?.name ?? cleanup
             let promptName = AIModelCatalog.choice(for: prompt)?.name ?? prompt
-            return "OpenRouter (\(cleanupName) · \(promptName))"
+            return "OpenRouter (\(transcriptionName) STT · \(cleanupName) cleanup · \(promptName) prompt)"
         }
         if let path = locateCLI() { return "claude CLI (\(path))" }
         return "none found"

@@ -38,12 +38,21 @@ struct SettingsView: View {
                 }
             }
 
-            Section("AI cleanup") {
+            Section("AI models") {
                 Toggle("Clean up dictation with AI", isOn: $store.config.llmCleanupEnabled)
                 Text("Off = raw transcript with dictionary corrections only.")
                     .font(.caption).foregroundStyle(.secondary)
                 SecureField("OpenRouter API key (sk-or-…)", text: $store.config.openRouterKey)
-                Picker("Dictation model", selection: $store.config.openRouterCleanupModel) {
+                Picker("Transcription model", selection: $store.config.openRouterTranscriptionModel) {
+                    ForEach(TranscriptionModelCatalog.choices) { choice in
+                        Text("\(choice.name) — \(choice.detail)").tag(choice.id)
+                    }
+                    if TranscriptionModelCatalog.choice(for: store.config.openRouterTranscriptionModel) == nil {
+                        Text("Custom — \(store.config.openRouterTranscriptionModel)").tag(store.config.openRouterTranscriptionModel)
+                    }
+                }
+                .pickerStyle(.menu)
+                Picker("Cleanup model", selection: $store.config.openRouterCleanupModel) {
                     ForEach(AIModelCatalog.choices) { choice in
                         Text("\(choice.name) — \(choice.detail)").tag(choice.id)
                     }
@@ -61,10 +70,12 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                Text("Dictation runs on every utterance — its model IS the speed you feel, so keep it small and fast. Prompt Mode can afford a smarter, slower model.")
+                Text("With a key, audio is transcribed by Whisper Turbo. Apple's on-device transcriber runs in parallel as the automatic fallback. Cleanup and Prompt Mode are separate text-model passes.")
                     .font(.caption).foregroundStyle(.secondary)
                 DisclosureGroup("Use custom OpenRouter model IDs") {
-                    TextField("Dictation model ID", text: $store.config.openRouterCleanupModel)
+                    TextField("Transcription model ID", text: $store.config.openRouterTranscriptionModel)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Cleanup model ID", text: $store.config.openRouterCleanupModel)
                         .textFieldStyle(.roundedBorder)
                     TextField("Prompt Mode model ID", text: $store.config.openRouterModel)
                         .textFieldStyle(.roundedBorder)

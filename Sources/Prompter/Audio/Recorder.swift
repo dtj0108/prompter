@@ -3,6 +3,11 @@ import AVFoundation
 final class Recorder {
     private let engine = AVAudioEngine()
     private(set) var startTime: Date?
+    private var recordingFile: AVAudioFile?
+    private var recordingURL: URL?
+    private var recordingConverter: AVAudioConverter?
+    private var recordingFormat: AVAudioFormat?
+    private var didLogRecordingError = false
     var onBuffer: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
     /// Live mic level 0…1 for the waveform HUD, several times per buffer.
     /// Called on the audio tap thread.
@@ -35,10 +40,12 @@ final class Recorder {
     func start() throws {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
+        prepareCloudRecording(inputFormat: format)
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, when in
             guard let self else { return }
             self.onBuffer?(buffer, when)
+            self.writeCloudRecording(buffer)
             self.emitLevels(buffer)
         }
         engine.prepare()
@@ -65,8 +72,104 @@ final class Recorder {
         let duration = startTime.map { Date().timeIntervalSince($0) } ?? 0
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        // Releasing AVAudioFile flushes and finalizes the WAV header before the
+        // processing task reads it.
+        recordingFile = nil
+        recordingConverter = nil
+        recordingFormat = nil
         startTime = nil
         return duration
+    }
+
+    /// Transfers ownership of the completed temporary WAV to the caller.
+    func takeRecordingURL() -> URL? {
+        defer { recordingURL = nil }
+        return recordingURL
+    }
+
+    func discardRecording() {
+        recordingFile = nil
+        recordingConverter = nil
+        recordingFormat = nil
+        if let recordingURL {
+            try? FileManager.default.removeItem(at: recordingURL)
+        }
+        recordingURL = nil
+    }
+
+    /// Capture a compact 16 kHz mono PCM WAV alongside Apple's live analyzer.
+    /// Five minutes is about 9.6 MB before base64 encoding.
+    private func prepareCloudRecording(inputFormat: AVAudioFormat) {
+        discardRecording()
+        didLogRecordingError = false
+        guard let outputFormat = AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: 16_000,
+            channels: 1,
+            interleaved: true
+        ) else {
+            Log.write("could not create cloud recording format; local STT remains available")
+            return
+        }
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("prompter-\(UUID().uuidString)")
+            .appendingPathExtension("wav")
+        do {
+            let file = try AVAudioFile(
+                forWriting: url,
+                settings: outputFormat.settings,
+                commonFormat: .pcmFormatInt16,
+                interleaved: true
+            )
+            guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+                throw NSError(domain: "Prompter.Recorder", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "Could not create the audio converter",
+                ])
+            }
+            converter.primeMethod = .none
+            recordingFile = file
+            recordingURL = url
+            recordingConverter = converter
+            recordingFormat = outputFormat
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            Log.write("cloud recording setup failed; local STT remains available: \(error)")
+        }
+    }
+
+    /// Called only by AVAudioEngine's serial tap callback.
+    private func writeCloudRecording(_ buffer: AVAudioPCMBuffer) {
+        guard let file = recordingFile,
+              let converter = recordingConverter,
+              let outputFormat = recordingFormat else { return }
+
+        let ratio = outputFormat.sampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up)) + 16
+        guard let output = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else { return }
+
+        var consumed = false
+        var conversionError: NSError?
+        let inputBuffer = buffer
+        let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
+            if consumed {
+                inputStatus.pointee = .noDataNow
+                return nil
+            }
+            consumed = true
+            inputStatus.pointee = .haveData
+            return inputBuffer
+        }
+
+        do {
+            guard status != .error else { throw conversionError ?? NSError(domain: "Prompter.Recorder", code: 2) }
+            if output.frameLength > 0 { try file.write(from: output) }
+        } catch {
+            if !didLogRecordingError {
+                didLogRecordingError = true
+                Log.write("cloud recording write failed; local STT remains available: \(error)")
+            }
+        }
     }
 
     /// RMS level per sub-chunk of the buffer (~3 samples per ~85 ms buffer keeps

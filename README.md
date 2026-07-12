@@ -2,7 +2,7 @@
 
 A personal replacement for Wispr Flow. Hold a key, talk, release — polished text appears wherever your cursor is. Or tap the key once and go hands-free.
 
-Built as a native macOS Dock app. Speech-to-text runs **fully on-device** (Apple's macOS 26 `SpeechAnalyzer` — your audio never leaves the Mac). The AI cleanup runs through **OpenRouter** (add your `sk-or-…` key in Settings; the default is the small, fast `openai/gpt-5.6-luna` model), with automatic fallback to the `claude` CLI on your Claude subscription if no key is set, and plain dictionary-corrected transcripts if neither is available.
+Built as a native macOS Dock app. With an OpenRouter key, speech-to-text defaults to the fast, inexpensive `openai/whisper-large-v3-turbo`; Apple's macOS 26 `SpeechAnalyzer` runs in parallel as an on-device fallback. Without a key, audio never leaves the Mac. The optional text cleanup uses OpenRouter's free router, with fallback to the `claude` CLI on your Claude subscription and then to plain dictionary-corrected transcripts.
 
 ## What it does
 
@@ -28,7 +28,7 @@ First run: the Setup Assistant walks through **Microphone** and **Accessibility*
 
 Also one-time: macOS 26 may show a "Prompter would like to paste from …" alert the first time it snapshots your clipboard (it saves and restores your clipboard around every insert) — choose **Always Allow**.
 
-**AI backend:** paste an OpenRouter key in Settings → AI cleanup (get one at [openrouter.ai/keys](https://openrouter.ai/settings/keys)). Notes from research (July 2026): `:free` models are capped at 50 requests/day — 1,000/day after a one-time $10 credit top-up — and may train on your text; the default paid model is private and costs ~$0.03/day. If the chosen model errors, requests automatically fall back through `openai/gpt-oss-120b` → `qwen/qwen3-30b-a3b-instruct-2507` → `meta-llama/llama-3.3-70b-instruct`. No OpenRouter key? The `claude` CLI is used instead (one-time login: run `claude` in Terminal, then `/login`).
+**AI backend:** paste an OpenRouter key in Settings → AI models (get one at [openrouter.ai/keys](https://openrouter.ai/settings/keys)). Whisper Turbo transcription is currently $0.04/audio hour. Text cleanup defaults to OpenRouter's free router; free models may be request-limited and may allow provider training. Paid text-model selections retain the existing fallback chain. No OpenRouter key? Speech uses Apple entirely on-device, and text cleanup uses the `claude` CLI if available (one-time login: run `claude` in Terminal, then `/login`).
 
 **Keeping permissions across rebuilds:** ad-hoc signing means macOS sees every rebuilt binary as a new app, so grants reset after code changes. One-time fix: Keychain Access → Certificate Assistant → Create a Certificate → name `prompter-dev`, type **Code Signing** — then build with `./scripts/build-app.sh --identity prompter-dev --install`.
 
@@ -56,6 +56,7 @@ The source repository must be public (or the release assets must be mirrored pub
 
 ```sh
 .build/release/Prompter --transcribe test.aiff      # speech engine only
+.build/release/Prompter --transcribe-openrouter test.wav # Whisper Turbo STT
 .build/release/Prompter --test-llm                  # AI backend health check
 .build/release/Prompter --test-cleanup "um so hey can you er send me the the report"
 .build/release/Prompter --test-prompt "I want like a blog post about contractor marketing, 500 words"

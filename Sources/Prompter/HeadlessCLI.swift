@@ -23,6 +23,21 @@ enum HeadlessCLI {
             }
             return true
 
+        case "--transcribe-openrouter":
+            guard args.count >= 3 else {
+                FileHandle.standardError.write(Data("usage: Prompter --transcribe-openrouter <wav-file>\n".utf8))
+                return true
+            }
+            runBlocking {
+                let url = URL(fileURLWithPath: args[2])
+                let result = try await OpenRouterTranscriber.transcribeFile(
+                    url,
+                    model: ConfigStore.shared.config.openRouterTranscriptionModel
+                )
+                print(result.text)
+            }
+            return true
+
         case "--test-llm":
             runBlocking {
                 let reply = try await LLMClient.shared.complete(

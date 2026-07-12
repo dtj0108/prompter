@@ -6,6 +6,9 @@ struct Config: Codable {
     var apiKey: String = ""
     var openRouterKey: String = ""
     var openRouterModel: String = "openai/gpt-5.6-luna"
+    /// Primary speech-to-text model when an OpenRouter key is configured.
+    /// Apple's on-device SpeechAnalyzer remains the automatic fallback.
+    var openRouterTranscriptionModel: String = "openai/whisper-large-v3-turbo"
     /// Dictation cleanup runs on every utterance, so use OpenRouter's free
     /// router by default. Prompt Mode keeps its separate, user-selected model.
     var openRouterCleanupModel: String = "openrouter/free"
@@ -196,7 +199,7 @@ enum PromptAssistLevel: String, CaseIterable, Identifiable {
 
 extension Config {
     private enum CodingKeys: String, CodingKey {
-        case apiKey, openRouterKey, openRouterModel, openRouterCleanupModel, cleanupModel, promptModel, claudeCLIPath
+        case apiKey, openRouterKey, openRouterModel, openRouterTranscriptionModel, openRouterCleanupModel, cleanupModel, promptModel, claudeCLIPath
         case dictationHotkey, promptHotkey, tapToLockEnabled
         case llmCleanupEnabled, holdThresholdMs, pasteRestoreDelayMs, maxRecordingSec
         case soundsEnabled, showIdleIndicator, launchAtLogin, onboardingDone
@@ -214,6 +217,7 @@ extension Config {
         openRouterModel = storedOpenRouterModel == "google/gemini-2.5-flash-lite"
             ? d.openRouterModel
             : storedOpenRouterModel
+        openRouterTranscriptionModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterTranscriptionModel)) ?? nil ?? d.openRouterTranscriptionModel
         let storedCleanupModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterCleanupModel)) ?? nil ?? d.openRouterCleanupModel
         // Move installations still using the previous shipped dictation default
         // to free routing, while preserving every other custom selection.

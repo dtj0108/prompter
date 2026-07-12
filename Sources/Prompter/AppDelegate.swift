@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         Prompts.ensurePromptModeFileExists()
+        setupMainMenu()
         setupStatusItem()
         DictationController.shared.start()
         HUD.shared.start()
@@ -18,6 +19,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !ConfigStore.shared.config.onboardingDone {
             WindowRouter.shared.openOnboarding()
         }
+    }
+
+    /// Accessory (menu-bar-only) apps have no main menu, so ⌘V/⌘C/⌘X/⌘A have
+    /// nothing to route through and silently do nothing in our windows — you
+    /// couldn't even paste an API key. A hidden Edit menu fixes all of them.
+    private func setupMainMenu() {
+        let main = NSMenu()
+
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(NSMenuItem(title: "Quit Prompter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = edit
+        main.addItem(editItem)
+
+        NSApp.mainMenu = main
     }
 
     private func setupStatusItem() {

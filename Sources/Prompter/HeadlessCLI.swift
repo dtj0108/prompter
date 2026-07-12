@@ -38,15 +38,18 @@ enum HeadlessCLI {
             guard args.count >= 3 else { return true }
             runBlocking {
                 let dict = DictionaryStore.shared.entries.filter { !$0.phrase.isEmpty }
+                // Optional 3rd arg "separate" forces thought separation on (defaults to the configured value).
                 let system = Prompts.cleanupSystemPrompt(
                     context: FrontContext.unknown,
                     style: StyleStore.shared.style,
-                    dictionary: dict
+                    dictionary: dict,
+                    separateThoughts: args.count >= 4 ? args[3] == "separate" : ConfigStore.shared.config.separateThoughts
                 )
                 let reply = try await LLMClient.shared.complete(
                     system: system,
                     user: Prompts.cleanupUserPrompt(transcript: args[2]),
-                    model: ConfigStore.shared.config.cleanupModel
+                    model: ConfigStore.shared.config.cleanupModel,
+                    openRouterModel: ConfigStore.shared.config.openRouterCleanupModel
                 )
                 print(reply.text)
             }
@@ -56,9 +59,11 @@ enum HeadlessCLI {
             guard args.count >= 3 else { return true }
             runBlocking {
                 let dict = DictionaryStore.shared.entries.filter { !$0.phrase.isEmpty }
+                // Optional 3rd arg: light | medium | heavy (defaults to the configured level).
+                let level = PromptAssistLevel(rawValue: args.count >= 4 ? args[3] : ConfigStore.shared.config.promptAssistLevel) ?? .medium
                 let reply = try await LLMClient.shared.complete(
-                    system: Prompts.promptModeSystemPrompt(dictionary: dict),
-                    user: Prompts.promptModeUserPrompt(transcript: args[2]),
+                    system: Prompts.promptModeSystemPrompt(dictionary: dict, level: level),
+                    user: Prompts.promptModeUserPrompt(transcript: args[2], level: level),
                     model: ConfigStore.shared.config.promptModel,
                     temperature: 0
                 )

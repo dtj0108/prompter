@@ -3,6 +3,7 @@ import SwiftUI
 
 struct StyleView: View {
     @EnvironmentObject var store: StyleStore
+    @ObservedObject private var config = ConfigStore.shared
     @ObservedObject private var activeApp = ActiveAppMonitor.shared
     @State private var selectedContextId = "personal"
 
@@ -22,6 +23,7 @@ struct StyleView: View {
                     )
                 }
 
+                thoughtSeparationToggle
                 globalVoiceEditor
                 promptModeEditor
             }
@@ -109,6 +111,26 @@ struct StyleView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color.secondary.opacity(0.18)).frame(height: 1)
         }
+    }
+
+    private var thoughtSeparationToggle: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "text.append")
+                .font(.title2)
+                .foregroundStyle(.blue)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("I like to separate my sentences and thoughts").font(.body.weight(.semibold))
+                Text("Groups what you say into a couple of sentences at a time, starting a new line whenever a new thought begins.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("Separate thoughts", isOn: $config.config.separateThoughts)
+                .toggleStyle(.switch)
+                .labelsHidden()
+        }
+        .padding(14)
+        .background(Color.secondary.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var globalVoiceEditor: some View {

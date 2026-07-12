@@ -6,6 +6,12 @@ struct Config: Codable {
     var apiKey: String = ""
     var openRouterKey: String = ""
     var openRouterModel: String = "openai/gpt-5.6-luna"
+    /// Dictation cleanup runs on every utterance and its latency is the felt
+    /// speed of the app — keep it on a small, fast model independent of the
+    /// (usually smarter, slower) Prompt Mode model above. Luna measured ~0.8s
+    /// per cleanup and stays faithful to the speaker's voice; Flash Lite is a
+    /// touch faster but strips conversational words.
+    var openRouterCleanupModel: String = "openai/gpt-5.6-luna"
     var cleanupModel: String = "claude-haiku-4-5-20251001"
     var promptModel: String = "claude-sonnet-5"
     var claudeCLIPath: String = ""
@@ -20,6 +26,9 @@ struct Config: Codable {
     var showIdleIndicator: Bool = true
     var launchAtLogin: Bool = false
     var onboardingDone: Bool = false
+    var promptAssistLevel: String = PromptAssistLevel.medium.rawValue
+    /// Break dictation output into short thought-sized paragraphs.
+    var separateThoughts: Bool = false
 
     static let `default` = Config()
 }
@@ -155,16 +164,43 @@ enum DictationMode: String {
     case prompt
 }
 
+/// How much Prompt Mode is allowed to add on top of what was actually said.
+enum PromptAssistLevel: String, CaseIterable, Identifiable {
+    case light, medium, heavy
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .light: return "Light help"
+        case .medium: return "Medium help"
+        case .heavy: return "Heavy help"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .light:
+            return "Stays closest to your words. Cleans up what you said into a well-written prompt and adds nothing you didn't say."
+        case .medium:
+            return "Sharpens and organizes what you said. May add a brief note telling the agent to inspect code or verify — never new requirements."
+        case .heavy:
+            return "Fully engineers the prompt: structure, requirements, and verification guidance. Anything it assumes is marked so you can spot it."
+        }
+    }
+}
+
 // MARK: - Tolerant decoding
 // Missing keys fall back to defaults instead of failing the whole file, so app
 // updates that add fields (or hand-edits that drop one) never wipe user data.
 
 extension Config {
     private enum CodingKeys: String, CodingKey {
-        case apiKey, openRouterKey, openRouterModel, cleanupModel, promptModel, claudeCLIPath
+        case apiKey, openRouterKey, openRouterModel, openRouterCleanupModel, cleanupModel, promptModel, claudeCLIPath
         case dictationHotkey, promptHotkey, tapToLockEnabled
         case llmCleanupEnabled, holdThresholdMs, pasteRestoreDelayMs, maxRecordingSec
         case soundsEnabled, showIdleIndicator, launchAtLogin, onboardingDone
+        case promptAssistLevel, separateThoughts
     }
 
     init(from decoder: Decoder) throws {
@@ -178,6 +214,7 @@ extension Config {
         openRouterModel = storedOpenRouterModel == "google/gemini-2.5-flash-lite"
             ? d.openRouterModel
             : storedOpenRouterModel
+        openRouterCleanupModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterCleanupModel)) ?? nil ?? d.openRouterCleanupModel
         tapToLockEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .tapToLockEnabled)) ?? nil ?? d.tapToLockEnabled
         onboardingDone = (try? c.decodeIfPresent(Bool.self, forKey: .onboardingDone)) ?? nil ?? d.onboardingDone
         cleanupModel = (try? c.decodeIfPresent(String.self, forKey: .cleanupModel)) ?? nil ?? d.cleanupModel
@@ -192,6 +229,8 @@ extension Config {
         soundsEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .soundsEnabled)) ?? nil ?? d.soundsEnabled
         showIdleIndicator = (try? c.decodeIfPresent(Bool.self, forKey: .showIdleIndicator)) ?? nil ?? d.showIdleIndicator
         launchAtLogin = (try? c.decodeIfPresent(Bool.self, forKey: .launchAtLogin)) ?? nil ?? d.launchAtLogin
+        promptAssistLevel = (try? c.decodeIfPresent(String.self, forKey: .promptAssistLevel)) ?? nil ?? d.promptAssistLevel
+        separateThoughts = (try? c.decodeIfPresent(Bool.self, forKey: .separateThoughts)) ?? nil ?? d.separateThoughts
     }
 }
 

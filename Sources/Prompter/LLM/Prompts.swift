@@ -5,7 +5,7 @@ enum Prompts {
 
     // MARK: - Cleanup (dictation mode)
 
-    static func cleanupSystemPrompt(context: FrontContext, style: StyleConfig, dictionary: [DictEntry], snippets: [Snippet] = []) -> String {
+    static func cleanupSystemPrompt(context: FrontContext, style: StyleConfig, dictionary: [DictEntry], snippets: [Snippet] = [], separateThoughts: Bool = false) -> String {
         var parts: [String] = []
         parts.append("""
         You are the invisible transcription engine inside Prompter, a macOS dictation app. The user spoke \
@@ -27,7 +27,13 @@ enum Prompts {
         - Resolve self-corrections to the FINAL intent ("send it Tuesday — actually Wednesday" becomes "send it Wednesday").
         - Apply the dictionary spellings exactly as given below; the transcript may have misheard them or \
         cased them wrong.
-        - Fix punctuation, capitalization, and obvious misrecognitions/homophones using context.
+        - The transcript's punctuation and sentence breaks were guessed by the speech engine — do not \
+        trust them. Re-punctuate from how the words actually read: end a sentence where the spoken \
+        thought ends, split run-ons into shorter sentences, and add commas only where a reader needs \
+        the pause. Never leave a comma splice joining two complete sentences.
+        - Stick to plain periods, commas, and question marks. Do not introduce semicolons, em dashes, \
+        parentheses, or ellipses unless the user dictated them.
+        - Fix capitalization and obvious misrecognitions/homophones using context.
         - Honor explicit spoken formatting commands: "new line", "new paragraph", "bullet points", \
         "in quotes" / "quote ... unquote", "all caps", "numbered list".
         - Apply the destination style mainly through capitalization, punctuation, paragraph breaks, list \
@@ -37,6 +43,15 @@ enum Prompts {
         - The output should contain essentially the same words and be about the same length as the transcript.
         - Format numbers, prices, ratios, and handles naturally for written text ("$5,000", "2.5x", "contractorcalls.ai").
         """)
+
+        if separateThoughts {
+            parts.append("""
+            The user prefers their thoughts visually separated: present the text as short groups of one \
+            to three sentences, with a blank line between groups wherever a new thought or topic starts. \
+            Prefer several short paragraphs over one dense block. This is formatting only — it changes \
+            where the line breaks go, never the words.
+            """)
+        }
 
         if !dictionary.isEmpty {
             var dictLines: [String] = ["<dictionary>"]
@@ -90,7 +105,9 @@ enum Prompts {
     // MARK: - Prompt mode
 
     /// Loads the user-editable meta prompt if present, else the built-in default.
-    static func promptModeSystemPrompt(dictionary: [DictEntry]) -> String {
+    /// The assistance-level block is appended AFTER the base so it overrides the
+    /// base's structure/verification instructions when they conflict.
+    static func promptModeSystemPrompt(dictionary: [DictEntry], level: PromptAssistLevel = .medium) -> String {
         var base: String
         if let custom = try? String(contentsOf: Paths.promptModeFile, encoding: .utf8),
            !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -106,6 +123,7 @@ enum Prompts {
         } else {
             base = defaultPromptModeSystemPrompt
         }
+        base += "\n\n" + assistanceLevelBlock(level)
         if !dictionary.isEmpty {
             let dictLines = dictionary.map { entry -> String in
                 var line = "- \"\(entry.phrase)\""
@@ -119,16 +137,78 @@ enum Prompts {
         return base
     }
 
-    static func promptModeUserPrompt(transcript: String) -> String {
-        """
+    /// The assistance level chosen in the Prompt Mode tab. It is deliberately
+    /// blunt about overriding the base prompt: "making stuff up" complaints come
+    /// from the base's execution-guidance instructions, so lighter levels must
+    /// beat them, not negotiate with them.
+    private static func assistanceLevelBlock(_ level: PromptAssistLevel) -> String {
+        switch level {
+        case .light:
+            return """
+            <assistance_level>
+            The user chose LIGHT help for this dictation. This overrides every earlier instruction that \
+            adds material: do NOT add headings, sections, execution steps, repository-inspection or \
+            verification requirements, safeguards, finish lines, or any agent guidance the user did not \
+            say. Your whole job is to clean the transcript into a well-written prompt: fix wording and \
+            punctuation, remove filler, resolve self-corrections, and keep the user's own words, order, \
+            tone, and length as much as possible. The result should read like the user typed their own \
+            request carefully — nothing more.
+            </assistance_level>
+            """
+        case .medium:
+            return """
+            <assistance_level>
+            The user chose MEDIUM help for this dictation. Sharpen and organize what they said: a clear \
+            opening verb, precise wording, and light structure only when it genuinely helps. You may add \
+            at most one brief, generic execution note (such as inspecting the relevant code first, or \
+            verifying the change) when clearly useful — skip the base prompt's fuller coding contract. \
+            Do NOT add requirements, features, constraints, acceptance criteria, examples, or specifics \
+            the user did not say. When unsure whether the user would want an addition, leave it out.
+            </assistance_level>
+            """
+        case .heavy:
+            return """
+            <assistance_level>
+            The user chose HEAVY help for this dictation. Fully engineer the prompt: strong structure, \
+            explicit requirements derived from what was said, and thorough execution and verification \
+            guidance for the agent. You may fill small gaps with reasonable assumptions, but mark each \
+            one clearly inside the prompt (for example a line starting with "Assume:") so the user can \
+            spot and remove it. Even here, never present invented specifics as if the user said them.
+            </assistance_level>
+            """
+        }
+    }
+
+    static func promptModeUserPrompt(transcript: String, level: PromptAssistLevel = .medium) -> String {
+        let instruction: String
+        switch level {
+        case .light:
+            instruction = """
+            Rewrite this as a clean, faithful prompt in the user's own voice. Preserve the speaker's \
+            final intent, every requested action, every concrete detail, and every scope boundary. Add \
+            nothing they did not say. Output only the prompt itself.
+            """
+        case .medium:
+            instruction = """
+            Rewrite this as a clear prompt. Preserve the speaker's final intent, every requested action, \
+            every concrete detail, and every scope boundary. Keep additions minimal per the assistance \
+            level. For an investigation, explanation, review, or plan, do not authorize edits. Output \
+            only the prompt itself.
+            """
+        case .heavy:
+            instruction = """
+            Rewrite this as a coding-agent prompt. Preserve the speaker's final intent, every requested action, \
+            every concrete detail, and every scope boundary. For an implementation or fix, include repository \
+            inspection, root-cause analysis for bugs, scoped changes, and relevant verification. For an \
+            investigation, explanation, review, or plan, do not authorize edits. Output only the prompt itself.
+            """
+        }
+        return """
         <spoken_request>
         \(transcript)
         </spoken_request>
 
-        Rewrite this as a coding-agent prompt. Preserve the speaker's final intent, every requested action, \
-        every concrete detail, and every scope boundary. For an implementation or fix, include repository \
-        inspection, root-cause analysis for bugs, scoped changes, and relevant verification. For an \
-        investigation, explanation, review, or plan, do not authorize edits. Output only the prompt itself.
+        \(instruction)
         """
     }
 

@@ -43,7 +43,16 @@ struct SettingsView: View {
                 Text("Off = raw transcript with dictionary corrections only.")
                     .font(.caption).foregroundStyle(.secondary)
                 SecureField("OpenRouter API key (sk-or-…)", text: $store.config.openRouterKey)
-                Picker("Model", selection: $store.config.openRouterModel) {
+                Picker("Dictation model", selection: $store.config.openRouterCleanupModel) {
+                    ForEach(AIModelCatalog.choices) { choice in
+                        Text("\(choice.name) — \(choice.detail)").tag(choice.id)
+                    }
+                    if AIModelCatalog.choice(for: store.config.openRouterCleanupModel) == nil {
+                        Text("Custom — \(store.config.openRouterCleanupModel)").tag(store.config.openRouterCleanupModel)
+                    }
+                }
+                .pickerStyle(.menu)
+                Picker("Prompt Mode model", selection: $store.config.openRouterModel) {
                     ForEach(AIModelCatalog.choices) { choice in
                         Text("\(choice.name) — \(choice.detail)").tag(choice.id)
                     }
@@ -52,16 +61,17 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                LabeledContent("Provider model ID", value: store.config.openRouterModel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                DisclosureGroup("Use a custom OpenRouter model") {
-                    TextField("Provider model ID", text: $store.config.openRouterModel)
+                Text("Dictation runs on every utterance — its model IS the speed you feel, so keep it small and fast. Prompt Mode can afford a smarter, slower model.")
+                    .font(.caption).foregroundStyle(.secondary)
+                DisclosureGroup("Use custom OpenRouter model IDs") {
+                    TextField("Dictation model ID", text: $store.config.openRouterCleanupModel)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Prompt Mode model ID", text: $store.config.openRouterModel)
                         .textFieldStyle(.roundedBorder)
                 }
                 Link("Get a key at openrouter.ai/keys", destination: URL(string: "https://openrouter.ai/settings/keys")!)
                     .font(.caption)
-                Text("GPT-5.6 Luna is the smallest, fastest GPT-5.6 tier. “:free” models may be request-limited and may let the provider train on your text.")
+                Text("“:free” models may be request-limited and may let the provider train on your text.")
                     .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Backend in use", value: LLMClient.shared.backendDescription)
                 HStack {

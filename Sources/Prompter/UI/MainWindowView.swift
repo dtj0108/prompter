@@ -3,7 +3,7 @@ import AppKit
 import AVFoundation
 
 enum MainTab: String, CaseIterable, Identifiable {
-    case home, insights, dictionary, snippets, style, settings
+    case home, insights, dictionary, snippets, style, promptMode, settings
 
     var id: String { rawValue }
 
@@ -14,6 +14,7 @@ enum MainTab: String, CaseIterable, Identifiable {
         case .dictionary: return "Dictionary"
         case .snippets: return "Snippets"
         case .style: return "Style"
+        case .promptMode: return "Prompt Mode"
         case .settings: return "Settings"
         }
     }
@@ -25,6 +26,7 @@ enum MainTab: String, CaseIterable, Identifiable {
         case .dictionary: return "character.book.closed"
         case .snippets: return "scissors"
         case .style: return "textformat"
+        case .promptMode: return "wand.and.stars"
         case .settings: return "gearshape"
         }
     }
@@ -83,6 +85,9 @@ struct MainWindowView: View {
         case .style:
             StyleView()
                 .environmentObject(StyleStore.shared)
+        case .promptMode:
+            PromptModeView()
+                .environmentObject(ConfigStore.shared)
         case .settings:
             SettingsView()
                 .environmentObject(ConfigStore.shared)

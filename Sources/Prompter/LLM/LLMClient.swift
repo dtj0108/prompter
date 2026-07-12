@@ -52,14 +52,16 @@ final class LLMClient {
     ]
 
     /// `model` is the claude CLI model; when OpenRouter is active the configured
-    /// OpenRouter model is used instead (one model for everything — simpler).
-    func complete(system: String, user: String, model: String, timeout: TimeInterval = 90, temperature: Double = 0.2) async throws -> LLMResult {
+    /// OpenRouter model is used instead — or `openRouterModel` when the caller
+    /// wants a specific one (dictation cleanup runs on the fast model).
+    func complete(system: String, user: String, model: String, openRouterModel: String? = nil, timeout: TimeInterval = 90, temperature: Double = 0.2) async throws -> LLMResult {
         let orKey = ConfigStore.shared.config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !orKey.isEmpty {
-            let orModel = ConfigStore.shared.config.openRouterModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            let requested = (openRouterModel ?? ConfigStore.shared.config.openRouterModel)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             return try await completeViaOpenRouter(
                 system: system, user: user,
-                model: orModel.isEmpty ? Config.default.openRouterModel : orModel,
+                model: requested.isEmpty ? Config.default.openRouterModel : requested,
                 apiKey: orKey, timeout: timeout, temperature: temperature
             )
         }
@@ -67,9 +69,26 @@ final class LLMClient {
         return LLMResult(text: text, costUSD: 0)
     }
 
+    /// Fire-and-forget: open the HTTPS connection to OpenRouter while the user
+    /// is still talking, so the cleanup request that follows doesn't pay the
+    /// TCP+TLS handshake. URLSession keeps the connection alive and reuses it.
+    func prewarmConnection() {
+        guard !ConfigStore.shared.config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1")!)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 10
+        URLSession.shared.dataTask(with: request).resume()
+    }
+
     var backendDescription: String {
         let orKey = ConfigStore.shared.config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !orKey.isEmpty { return "OpenRouter (\(ConfigStore.shared.config.openRouterModel))" }
+        if !orKey.isEmpty {
+            let cleanup = ConfigStore.shared.config.openRouterCleanupModel
+            let prompt = ConfigStore.shared.config.openRouterModel
+            let cleanupName = AIModelCatalog.choice(for: cleanup)?.name ?? cleanup
+            let promptName = AIModelCatalog.choice(for: prompt)?.name ?? prompt
+            return "OpenRouter (\(cleanupName) · \(promptName))"
+        }
         if let path = locateCLI() { return "claude CLI (\(path))" }
         return "none found"
     }

@@ -96,6 +96,8 @@ final class DictationController {
         }
 
         let context = ContextDetector.capture()
+        // Overlap the TLS handshake with the user talking.
+        LLMClient.shared.prewarmConnection()
         session = Session(mode: mode, context: context, startedAt: Date(), handsFree: handsFree)
         sessionGen += 1
         let gen = sessionGen
@@ -243,6 +245,7 @@ final class DictationController {
         let system: String
         let user: String
         let model: String
+        let openRouterModel: String?
         let temperature: Double
         switch session.mode {
         case .dictate:
@@ -254,21 +257,24 @@ final class DictationController {
             guard config.llmCleanupEnabled else {
                 return (DictionaryStore.shared.applyRawCorrections(to: transcript), 0, false, 0)
             }
-            system = Prompts.cleanupSystemPrompt(context: session.context, style: StyleStore.shared.style, dictionary: dictionary, snippets: SnippetStore.shared.snippets)
+            system = Prompts.cleanupSystemPrompt(context: session.context, style: StyleStore.shared.style, dictionary: dictionary, snippets: SnippetStore.shared.snippets, separateThoughts: config.separateThoughts)
             user = Prompts.cleanupUserPrompt(transcript: transcript)
             model = config.cleanupModel
+            openRouterModel = config.openRouterCleanupModel
             temperature = 0.2
         case .prompt:
-            system = Prompts.promptModeSystemPrompt(dictionary: dictionary)
-            user = Prompts.promptModeUserPrompt(transcript: transcript)
+            let level = PromptAssistLevel(rawValue: config.promptAssistLevel) ?? .medium
+            system = Prompts.promptModeSystemPrompt(dictionary: dictionary, level: level)
+            user = Prompts.promptModeUserPrompt(transcript: transcript, level: level)
             model = config.promptModel
+            openRouterModel = nil // the main configured model
             // Prompt rewriting should be repeatable and instruction-faithful.
             temperature = 0
         }
 
         let llmStart = Date()
         do {
-            let result = try await LLMClient.shared.complete(system: system, user: user, model: model, temperature: temperature)
+            let result = try await LLMClient.shared.complete(system: system, user: user, model: model, openRouterModel: openRouterModel, temperature: temperature)
             let ms = Int(Date().timeIntervalSince(llmStart) * 1000)
             let finalText = session.mode == .prompt
                 ? Prompts.promptModeOutput(polishedPrompt: result.text, transcript: transcript)

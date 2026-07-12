@@ -92,6 +92,17 @@ Prompter stores editable state in `~/Library/Application Support/Prompter/`:
 .build/release/Prompter --test-prompt "build a 500-word contractor marketing post"
 ```
 
+## Contributing
+
+Contributions are welcome through pull requests. The `main` branch is protected and does not accept direct pushes.
+
+1. Fork this repository.
+2. Create a focused branch in your fork.
+3. Make and test your changes.
+4. Open a pull request against `dtj0108/prompter:main` with a clear explanation of what changed and why.
+
+Every pull request requires review and approval from the repository owner before it can be merged. Reviews may request changes, and approval can be dismissed when new commits materially change the proposed work. Please keep pull requests focused and do not include unrelated formatting or refactoring.
+
 ## Publishing updates
 
 Pushes to `main` run `.github/workflows/publish-update.yml`. The workflow builds a versioned app, signs it with a stable Developer ID identity, notarizes and staples it, packages `Prompter.zip`, generates a SHA-256 update manifest, and publishes both in a GitHub Release. Installed copies check that public release feed and update only when the user chooses to install.

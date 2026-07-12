@@ -328,7 +328,7 @@ private struct ContextBanner: View {
         HStack(spacing: 20) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
-                    .font(.system(size: 25, weight: .medium, design: .serif))
+                    .font(.system(size: 25, weight: .semibold))
                     .foregroundStyle(.white)
                 Text("Prompter recognizes the active app and applies this style before pasting at your cursor.")
                     .font(.callout)
@@ -429,7 +429,7 @@ private struct ToneCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(preset.title)
-                        .font(.system(size: 25, weight: .medium, design: .serif))
+                        .font(.system(size: 25, weight: .semibold))
                         .foregroundStyle(.primary)
                     Spacer()
                     if selected {

@@ -10,7 +10,7 @@ struct OnboardingView: View {
     /// Jump straight to a step — used when a permission was lost (e.g. after an
     /// app update reset TCC) and the assistant reopens on the broken step.
     init(startStep: Int = 0) {
-        _step = State(initialValue: min(max(startStep, 0), 4))
+        _step = State(initialValue: min(max(startStep, 0), 6))
     }
     @State private var micGranted = Recorder.micAuthorized()
     @State private var axGranted = AXIsProcessTrusted()
@@ -18,8 +18,10 @@ struct OnboardingView: View {
     @State private var testing = false
     @State private var practiceText = ""
 
+    @State private var keyMonitor: Any?
+
     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
-    private let stepCount = 5
+    private let stepCount = 7
 
     var body: some View {
         VStack(spacing: 0) {
@@ -61,15 +63,22 @@ struct OnboardingView: View {
             micGranted = Recorder.micAuthorized()
             axGranted = AXIsProcessTrusted()
         }
+        .onAppear { updateKeyCapture(for: step) }
+        .onChange(of: step) { _, newStep in updateKeyCapture(for: newStep) }
+        .onDisappear { updateKeyCapture(for: -1) }
     }
 
     @ViewBuilder
     private var content: some View {
+        // AppDelegate reopens directly on steps 1 (mic) and 2 (accessibility)
+        // when a permission is lost — keep those indices stable.
         switch step {
         case 0: welcome
         case 1: microphone
         case 2: accessibility
-        case 3: aiEngine
+        case 3: dictationKeyStep
+        case 4: promptKeyStep
+        case 5: aiEngine
         default: tryIt
         }
     }
@@ -169,7 +178,109 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: Step 4 — AI engine
+    // MARK: Steps 4 & 5 — Hotkeys
+
+    private var dictationKeyStep: some View {
+        hotkeyChoiceStep(
+            emoji: "🎤",
+            question: "What key do you want to press to start talking?",
+            blurb: "This one types your exact words — what you said, as-is, just cleaned up.",
+            recommended: .rightOption,
+            selection: $store.config.dictationHotkey,
+            conflictWith: nil
+        )
+    }
+
+    private var promptKeyStep: some View {
+        hotkeyChoiceStep(
+            emoji: "✨",
+            question: "What key do you want to press to do an AI prompt?",
+            blurb: "This one doesn't just type what you said — it uses it to write a well-made prompt for an AI.",
+            recommended: .rightCommand,
+            selection: $store.config.promptHotkey,
+            conflictWith: store.config.dictationHotkey
+        )
+    }
+
+    private func hotkeyChoiceStep(emoji: String, question: String, blurb: String, recommended: HotkeyKey, selection: Binding<String>, conflictWith: String?) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            header(emoji, question, blurb)
+
+            Text("Press the key on your keyboard right now — or click one below — then hit Continue.")
+                .font(.callout)
+
+            VStack(spacing: 8) {
+                ForEach(HotkeyKey.allCases) { key in
+                    keyRow(key,
+                           recommended: key == recommended,
+                           selected: selection.wrappedValue == key.rawValue) {
+                        selection.wrappedValue = key.rawValue
+                    }
+                }
+            }
+
+            if let conflictWith, selection.wrappedValue == conflictWith {
+                Text("⚠️ That key is already doing dictation — pick a different one so both can work.")
+                    .font(.callout).foregroundStyle(.orange)
+            } else if selection.wrappedValue == HotkeyKey.fn.rawValue {
+                Text("Using fn: set System Settings → Keyboard → “Press 🌐 key” to “Do Nothing” so the system doesn't race Prompter.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func keyRow(_ key: HotkeyKey, recommended: Bool, selected: Bool, action: @escaping () -> Void) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+            Text(key.display).font(.headline)
+            if recommended {
+                Text("Recommended")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.15), in: Capsule())
+                    .foregroundStyle(Color.accentColor)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(Color.secondary.opacity(selected ? 0.12 : 0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(selected ? Color.accentColor.opacity(0.7) : Color.clear, lineWidth: 1.5)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 9))
+        .onTapGesture(perform: action)
+    }
+
+    /// On the key-picker steps, pressing the physical key selects it. The live
+    /// hotkey monitor must not treat that press as "start dictating", so those
+    /// steps also raise DictationController.hotkeySelectionActive.
+    private func updateKeyCapture(for step: Int) {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+        let selecting = step == 3 || step == 4
+        DictationController.shared.hotkeySelectionActive = selecting
+        guard selecting else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+            guard let key = HotkeyKey.allCases.first(where: { $0.keyCode == event.keyCode }),
+                  event.modifierFlags.contains(key.flag) else { return event }
+            if step == 3 {
+                ConfigStore.shared.config.dictationHotkey = key.rawValue
+            } else {
+                ConfigStore.shared.config.promptHotkey = key.rawValue
+            }
+            return event
+        }
+    }
+
+    // MARK: Step 6 — AI engine
 
     private var aiEngine: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -200,7 +311,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: Step 5 — Try it
+    // MARK: Step 7 — Try it
 
     private var tryIt: some View {
         VStack(alignment: .leading, spacing: 16) {

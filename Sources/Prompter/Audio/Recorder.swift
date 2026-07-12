@@ -16,6 +16,22 @@ final class Recorder {
         engine.inputNode.outputFormat(forBus: 0)
     }
 
+    /// Apple's voice-processing DSP: suppresses background noise and voices
+    /// other than the dominant, near-field speaker. MUST be applied before
+    /// `inputFormat` is read for a session — toggling it changes the input
+    /// node's format, and the transcriber is primed with that format.
+    func applyVoiceIsolation(_ enabled: Bool) {
+        let input = engine.inputNode
+        guard input.isVoiceProcessingEnabled != enabled else { return }
+        do {
+            try input.setVoiceProcessingEnabled(enabled)
+            Log.write("voice isolation \(enabled ? "enabled" : "disabled")")
+        } catch {
+            // Never block dictation on DSP setup — plain capture still works.
+            Log.write("voice isolation toggle failed: \(error)")
+        }
+    }
+
     func start() throws {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)

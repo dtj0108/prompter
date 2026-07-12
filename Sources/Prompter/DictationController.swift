@@ -19,6 +19,9 @@ final class DictationController {
     private var session: Session?
     private var busy = false
     var isPaused = false
+    /// True while onboarding's key-picker steps are on screen: pressing a
+    /// modifier key there is choosing a hotkey, not starting a dictation.
+    var hotkeySelectionActive = false
     private var maxDurationTimer: DispatchWorkItem?
     /// Bumped on every session start/stop; async startup steps abort if it moved.
     private var sessionGen = 0
@@ -75,6 +78,7 @@ final class DictationController {
     // MARK: - Session lifecycle
 
     private func beginSession(mode: DictationMode, handsFree: Bool = false) {
+        guard !hotkeySelectionActive else { return }
         guard !isPaused else {
             HUD.shared.flash(.failure("Prompter is paused"))
             return
@@ -94,6 +98,10 @@ final class DictationController {
             }
             return
         }
+
+        // Before engine.begin reads recorder.inputFormat — toggling voice
+        // processing changes that format.
+        recorder.applyVoiceIsolation(ConfigStore.shared.config.voiceIsolationEnabled)
 
         let context = ContextDetector.capture()
         // Overlap the TLS handshake with the user talking.

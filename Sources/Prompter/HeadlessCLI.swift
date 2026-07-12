@@ -85,6 +85,66 @@ enum HeadlessCLI {
             }
             return true
 
+        case "--render-onboarding":
+            guard args.count >= 3 else {
+                FileHandle.standardError.write(Data("usage: Prompter --render-onboarding <png-path> [step]\n".utf8))
+                return true
+            }
+            MainActor.assumeIsolated {
+                _ = NSApplication.shared
+                let step = args.count >= 4 ? (Int(args[3]) ?? 0) : 0
+                let content = OnboardingView(startStep: step)
+                    .environmentObject(ConfigStore.shared)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                let host = NSHostingView(rootView: content)
+                host.frame = NSRect(x: 0, y: 0, width: 560, height: 540)
+                host.appearance = NSAppearance(named: .aqua)
+                host.layoutSubtreeIfNeeded()
+                guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+                    FileHandle.standardError.write(Data("failed to render Onboarding view\n".utf8))
+                    return
+                }
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
+                do {
+                    try png.write(to: URL(fileURLWithPath: args[2]), options: .atomic)
+                    print(args[2])
+                } catch {
+                    FileHandle.standardError.write(Data("render failed: \(error)\n".utf8))
+                }
+            }
+            return true
+
+        case "--render-prompts":
+            guard args.count >= 3 else {
+                FileHandle.standardError.write(Data("usage: Prompter --render-prompts <png-path>\n".utf8))
+                return true
+            }
+            MainActor.assumeIsolated {
+                _ = NSApplication.shared
+                let content = PromptModeView()
+                    .environmentObject(ConfigStore.shared)
+                    .frame(width: 880, height: 620)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                let host = NSHostingView(rootView: content)
+                host.frame = NSRect(x: 0, y: 0, width: 880, height: 620)
+                host.appearance = NSAppearance(named: .aqua)
+                host.layoutSubtreeIfNeeded()
+                guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+                    FileHandle.standardError.write(Data("failed to render Prompts view\n".utf8))
+                    return
+                }
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
+                do {
+                    try png.write(to: URL(fileURLWithPath: args[2]), options: .atomic)
+                    print(args[2])
+                } catch {
+                    FileHandle.standardError.write(Data("render failed: \(error)\n".utf8))
+                }
+            }
+            return true
+
         case "--render-style":
             guard args.count >= 3 else {
                 FileHandle.standardError.write(Data("usage: Prompter --render-style <png-path>\n".utf8))

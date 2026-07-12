@@ -41,7 +41,7 @@ enum Prompts {
         smallest possible wording change only when an explicit style rule cannot otherwise be satisfied.
         - Do not add content, context, greetings, sign-offs, claims, constraints, or details the user did not say.
         - The output should contain essentially the same words and be about the same length as the transcript.
-        - Format numbers, prices, ratios, and handles naturally for written text ("$5,000", "2.5x", "contractorcalls.ai").
+        - Format numbers, prices, ratios, and handles naturally for written text ("$5,000", "2.5x", "example.com").
         """)
 
         if separateThoughts {

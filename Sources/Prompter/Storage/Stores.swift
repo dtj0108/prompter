@@ -47,13 +47,9 @@ final class DictionaryStore: ObservableObject {
         didSet { saveJSON(entries, to: Paths.dictionaryFile) }
     }
     private init() {
-        let seed: [DictEntry] = [
-            DictEntry(phrase: "Hormozi", soundsLike: ["Hermosi", "Her Mozi", "Ramosi", "Hormosey"]),
-            DictEntry(phrase: "Contractor Calls", soundsLike: ["contractor calls"]),
-            DictEntry(phrase: "contractorcalls.ai", soundsLike: ["contractor calls dot AI", "contractor calls dot A I"]),
-            DictEntry(phrase: "GSO", soundsLike: ["G S O", "GSL"], note: "Grand Slam Offer"),
-            DictEntry(phrase: "Wispr Flow", soundsLike: ["whisper flow", "wisper flow"]),
-        ]
+        // A dictionary is personal data. New installs start empty; an existing
+        // dictionary file is always loaded as-is and is never reset here.
+        let seed: [DictEntry] = []
         if FileManager.default.fileExists(atPath: Paths.dictionaryFile.path) {
             entries = loadJSON(Paths.dictionaryFile, fallback: seed)
         } else {
@@ -90,10 +86,9 @@ final class SnippetStore: ObservableObject {
     }
 
     private init() {
-        let seed: [Snippet] = [
-            Snippet(trigger: "my email address", expansion: "hello@contractorcalls.ai"),
-            Snippet(trigger: "my website", expansion: "https://contractorcalls.ai"),
-        ]
+        // Snippet expansions can contain private contact information, so each
+        // new install starts empty while existing saved snippets are preserved.
+        let seed: [Snippet] = []
         if FileManager.default.fileExists(atPath: Paths.snippetsFile.path) {
             snippets = loadJSON(Paths.snippetsFile, fallback: seed)
         } else {

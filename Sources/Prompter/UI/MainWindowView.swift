@@ -14,7 +14,7 @@ enum MainTab: String, CaseIterable, Identifiable {
         case .dictionary: return "Dictionary"
         case .snippets: return "Snippets"
         case .style: return "Style"
-        case .promptMode: return "Prompt Mode"
+        case .promptMode: return "Prompts"
         case .settings: return "Settings"
         }
     }

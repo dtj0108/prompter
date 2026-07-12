@@ -125,6 +125,9 @@ struct SettingsView: View {
             }
 
             Section("Behavior") {
+                Toggle("Focus on my voice", isOn: $store.config.voiceIsolationEnabled)
+                Text("Apple's on-device voice isolation: keys on the person speaking at the Mac and suppresses background noise and other voices. For even stronger isolation, pick “Voice Isolation” under Mic Mode in Control Center while dictating.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("Play sounds", isOn: $store.config.soundsEnabled)
                 Toggle("Show bar at bottom of screen", isOn: Binding(
                     get: { store.config.showIdleIndicator },

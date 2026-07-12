@@ -107,8 +107,6 @@ final class LLMClient {
 
         var body: [String: Any] = [
             "model": model,
-            // If the chosen model is down or rate-limited, OpenRouter tries these.
-            "models": Self.fallbackModels.filter { $0 != model },
             "max_completion_tokens": 8000,
             "temperature": temperature,
             "messages": [
@@ -116,6 +114,12 @@ final class LLMClient {
                 ["role": "user", "content": user],
             ],
         ]
+        // Never let a free selection silently fall through to a paid model.
+        // The free router handles its own routing; explicit :free models should
+        // fail rather than incur a charge.
+        if model != "openrouter/free" && !model.hasSuffix(":free") {
+            body["models"] = Self.fallbackModels.filter { $0 != model }
+        }
         // Reasoning-by-default models burn tokens/latency thinking about a rewrite job.
         if model.contains("gpt-oss") || model.contains("gpt-5") || model.contains("thinking") {
             body["reasoning"] = ["effort": "low"]

@@ -8,6 +8,7 @@ struct AIModelChoice: Identifiable, Equatable {
 
 enum AIModelCatalog {
     static let choices: [AIModelChoice] = [
+        AIModelChoice(id: "openrouter/free", name: "Free", detail: "OpenRouter free model router"),
         AIModelChoice(id: "openai/gpt-5.6-luna", name: "GPT 5.6", detail: "Luna — smallest GPT-5.6"),
         AIModelChoice(id: "x-ai/grok-4.5", name: "Grok 4.5", detail: "xAI"),
         AIModelChoice(id: "anthropic/claude-sonnet-5", name: "Sun 5", detail: "Claude Sonnet 5"),

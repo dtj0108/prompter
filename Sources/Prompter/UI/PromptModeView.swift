@@ -14,10 +14,11 @@ struct PromptModeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Prompt Mode").font(.title2.bold())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Prompts").font(.largeTitle.bold())
                     Text("How much help you want turning what you say into a prompt.")
-                        .font(.callout).foregroundStyle(.secondary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
 
                 VStack(spacing: 10) {
@@ -44,7 +45,7 @@ struct PromptModeView: View {
                     }
                 }
             }
-            .padding(20)
+            .padding(24)
             .frame(maxWidth: 640, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }

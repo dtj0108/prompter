@@ -6,12 +6,9 @@ struct Config: Codable {
     var apiKey: String = ""
     var openRouterKey: String = ""
     var openRouterModel: String = "openai/gpt-5.6-luna"
-    /// Dictation cleanup runs on every utterance and its latency is the felt
-    /// speed of the app — keep it on a small, fast model independent of the
-    /// (usually smarter, slower) Prompt Mode model above. Luna measured ~0.8s
-    /// per cleanup and stays faithful to the speaker's voice; Flash Lite is a
-    /// touch faster but strips conversational words.
-    var openRouterCleanupModel: String = "openai/gpt-5.6-luna"
+    /// Dictation cleanup runs on every utterance, so use OpenRouter's free
+    /// router by default. Prompt Mode keeps its separate, user-selected model.
+    var openRouterCleanupModel: String = "openrouter/free"
     var cleanupModel: String = "claude-haiku-4-5-20251001"
     var promptModel: String = "claude-sonnet-5"
     var claudeCLIPath: String = ""
@@ -29,6 +26,9 @@ struct Config: Codable {
     var promptAssistLevel: String = PromptAssistLevel.medium.rawValue
     /// Break dictation output into short thought-sized paragraphs.
     var separateThoughts: Bool = false
+    /// Apple voice-processing on the mic: focus on the speaker at the Mac,
+    /// suppress background noise and other people's voices.
+    var voiceIsolationEnabled: Bool = true
 
     static let `default` = Config()
 }
@@ -200,7 +200,7 @@ extension Config {
         case dictationHotkey, promptHotkey, tapToLockEnabled
         case llmCleanupEnabled, holdThresholdMs, pasteRestoreDelayMs, maxRecordingSec
         case soundsEnabled, showIdleIndicator, launchAtLogin, onboardingDone
-        case promptAssistLevel, separateThoughts
+        case promptAssistLevel, separateThoughts, voiceIsolationEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -214,7 +214,12 @@ extension Config {
         openRouterModel = storedOpenRouterModel == "google/gemini-2.5-flash-lite"
             ? d.openRouterModel
             : storedOpenRouterModel
-        openRouterCleanupModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterCleanupModel)) ?? nil ?? d.openRouterCleanupModel
+        let storedCleanupModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterCleanupModel)) ?? nil ?? d.openRouterCleanupModel
+        // Move installations still using the previous shipped dictation default
+        // to free routing, while preserving every other custom selection.
+        openRouterCleanupModel = storedCleanupModel == "openai/gpt-5.6-luna"
+            ? d.openRouterCleanupModel
+            : storedCleanupModel
         tapToLockEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .tapToLockEnabled)) ?? nil ?? d.tapToLockEnabled
         onboardingDone = (try? c.decodeIfPresent(Bool.self, forKey: .onboardingDone)) ?? nil ?? d.onboardingDone
         cleanupModel = (try? c.decodeIfPresent(String.self, forKey: .cleanupModel)) ?? nil ?? d.cleanupModel
@@ -231,6 +236,7 @@ extension Config {
         launchAtLogin = (try? c.decodeIfPresent(Bool.self, forKey: .launchAtLogin)) ?? nil ?? d.launchAtLogin
         promptAssistLevel = (try? c.decodeIfPresent(String.self, forKey: .promptAssistLevel)) ?? nil ?? d.promptAssistLevel
         separateThoughts = (try? c.decodeIfPresent(Bool.self, forKey: .separateThoughts)) ?? nil ?? d.separateThoughts
+        voiceIsolationEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .voiceIsolationEnabled)) ?? nil ?? d.voiceIsolationEnabled
     }
 }
 

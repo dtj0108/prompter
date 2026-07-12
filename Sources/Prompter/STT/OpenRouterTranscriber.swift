@@ -27,6 +27,15 @@ enum CloudTranscriptionError: Error, LocalizedError {
 enum OpenRouterTranscriber {
     static let defaultModel = "openai/whisper-large-v3-turbo"
 
+    private static let retryableNetworkCodes: Set<URLError.Code> = [
+        .secureConnectionFailed,
+        .networkConnectionLost,
+        .cannotConnectToHost,
+        .cannotFindHost,
+        .dnsLookupFailed,
+        .timedOut,
+    ]
+
     /// Whisper can emit this exact phrase for silent or malformed audio. Only
     /// use this signal alongside a different, non-empty local transcript so a
     /// user who genuinely says "thank you" is not rejected.
@@ -68,7 +77,7 @@ enum OpenRouterTranscriber {
         request.setValue("Prompter", forHTTPHeaderField: "X-OpenRouter-Title")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await dataWithTransientRetries(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw CloudTranscriptionError.apiFailed("OpenRouter returned no HTTP response.")
         }
@@ -87,5 +96,44 @@ enum OpenRouterTranscriber {
         guard !text.isEmpty else { throw CloudTranscriptionError.emptyResponse }
         let cost = ((json?["usage"] as? [String: Any])?["cost"] as? NSNumber)?.doubleValue ?? 0
         return CloudTranscriptionResult(text: text, costUSD: cost)
+    }
+
+    /// A dictation should not be lost because the first TLS handshake or socket
+    /// briefly failed. Retry only transient transport failures, using a fresh
+    /// ephemeral session after the shared-session attempt so a bad connection
+    /// cannot be reused.
+    private static func dataWithTransientRetries(
+        for request: URLRequest,
+        maxAttempts: Int = 3
+    ) async throws -> (Data, URLResponse) {
+        precondition(maxAttempts > 0)
+
+        for attempt in 0..<maxAttempts {
+            let session = attempt == 0
+                ? URLSession.shared
+                : URLSession(configuration: .ephemeral)
+            do {
+                let result = try await session.data(for: request)
+                if attempt > 0 { session.finishTasksAndInvalidate() }
+                return result
+            } catch {
+                if attempt > 0 { session.invalidateAndCancel() }
+                let code = (error as? URLError)?.code
+                guard attempt + 1 < maxAttempts,
+                      let code,
+                      retryableNetworkCodes.contains(code) else {
+                    throw error
+                }
+
+                let delayMs = 250 * (attempt + 1)
+                Log.write(
+                    "OpenRouter transcription transport failed (\(code.rawValue)); " +
+                    "retrying attempt \(attempt + 2)/\(maxAttempts)"
+                )
+                try await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
+            }
+        }
+
+        throw URLError(.unknown)
     }
 }

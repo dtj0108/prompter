@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 **Prompter** — Drew's personal Wispr Flow replacement. A native macOS Dock dictation app: hold/tap a right-side modifier key, talk, and polished text is pasted at the cursor. Swift + SwiftUI, SwiftPM only (no Xcode project). Runs on macOS 26+, Apple Silicon.
 
-Pipeline: hotkey (`HotkeyMonitor`) → mic (`Recorder`, which also writes a temporary 16 kHz mono WAV) → Whisper Turbo STT through `STT/OpenRouterTranscriber.swift` when an OpenRouter key is set, with macOS 26 `SpeechAnalyzer` running in parallel as the local fallback → optional AI cleanup (`LLM/LLMClient.swift`) → paste (`Output/Paster.swift`) → log (`InsightsStore`). Orchestrated by `DictationController`; temporary audio is deleted after each request.
+Pipeline: hotkey (`HotkeyMonitor`) → mic (`Recorder`, which also writes the native mic buffers to a temporary WAV) → Whisper Turbo STT through `STT/OpenRouterTranscriber.swift` when an OpenRouter key is set, with macOS 26 `SpeechAnalyzer` running in parallel as the local fallback → optional AI cleanup (`LLM/LLMClient.swift`) → paste (`Output/Paster.swift`) → log (`InsightsStore`). Orchestrated by `DictationController`; temporary audio is deleted after each request.
 
 ## Build, install, test
 

@@ -27,6 +27,16 @@ enum CloudTranscriptionError: Error, LocalizedError {
 enum OpenRouterTranscriber {
     static let defaultModel = "openai/whisper-large-v3-turbo"
 
+    /// Whisper can emit this exact phrase for silent or malformed audio. Only
+    /// use this signal alongside a different, non-empty local transcript so a
+    /// user who genuinely says "thank you" is not rejected.
+    static func isLikelySilenceHallucination(_ text: String) -> Bool {
+        let normalized = text
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        return normalized == "thank you"
+    }
+
     static func transcribeFile(
         _ url: URL,
         model: String,

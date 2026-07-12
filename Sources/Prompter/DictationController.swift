@@ -262,8 +262,16 @@ final class DictationController {
                     model: config.openRouterTranscriptionModel
                 )
                 // Always let the parallel analyzer shut down cleanly before a
-                // new recording can start; its text is unused on cloud success.
-                _ = try? await localTranscript
+                // new recording can start. It also protects against Whisper's
+                // known silent-audio "Thank you" hallucination.
+                let local = ((try? await localTranscript) ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if OpenRouterTranscriber.isLikelySilenceHallucination(cloud.text),
+                   !local.isEmpty,
+                   !OpenRouterTranscriber.isLikelySilenceHallucination(local) {
+                    Log.write("OpenRouter returned a likely silence hallucination; using local transcript")
+                    return (local, 0, "apple-speechanalyzer-fallback")
+                }
                 return (
                     cloud.text,
                     cloud.costUSD,

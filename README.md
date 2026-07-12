@@ -41,7 +41,7 @@ Pressing another key while holding a Prompter hotkey cancels the recording, so n
 
 ## How transcription works
 
-With an OpenRouter key configured, Prompter records a temporary 16 kHz mono WAV and sends it to OpenRouter's Whisper Large V3 Turbo transcription endpoint. Apple's on-device SpeechAnalyzer runs as an automatic fallback. The temporary audio file is deleted after the request completes.
+With an OpenRouter key configured, Prompter records the native microphone audio to a temporary WAV and sends it to OpenRouter's Whisper Large V3 Turbo transcription endpoint. Apple's on-device SpeechAnalyzer runs as an automatic fallback. The temporary audio file is deleted after the request completes.
 
 Without an OpenRouter key, transcription stays entirely on the Mac using Apple's speech engine. Optional text cleanup can use OpenRouter, a locally authenticated `claude` CLI, or plain dictionary corrections.
 

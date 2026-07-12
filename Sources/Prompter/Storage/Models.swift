@@ -5,7 +5,7 @@ import Foundation
 struct Config: Codable {
     var apiKey: String = ""
     var openRouterKey: String = ""
-    var openRouterModel: String = "google/gemini-2.5-flash-lite"
+    var openRouterModel: String = "openai/gpt-5.6-luna"
     var cleanupModel: String = "claude-haiku-4-5-20251001"
     var promptModel: String = "claude-sonnet-5"
     var claudeCLIPath: String = ""
@@ -49,11 +49,29 @@ struct ContextStyle: Codable, Identifiable, Equatable {
     var appBundleIds: [String] = []
     var titleKeywords: [String] = []
     var instructions: String = ""
+    var tonePreset: String? = nil
 }
 
 struct StyleConfig: Codable {
+    static let currentDefaultsVersion = 2
+
+    var defaultsVersion: Int = currentDefaultsVersion
     var globalVoice: String
     var contexts: [ContextStyle]
+
+    static let aiContext = ContextStyle(
+        id: "ai",
+        name: "AI apps",
+        appBundleIds: [
+            "com.openai.codex",
+            "com.openai.chat",
+            "com.anthropic.claudefordesktop",
+            "com.anthropic.claude",
+        ],
+        titleKeywords: ["chatgpt", "claude", "codex", "gemini", "perplexity"],
+        instructions: "Structure the request so an AI can act on it. Lead with the objective, preserve all context and constraints, and organize multi-part requests clearly. Do not answer the request or invent requirements.",
+        tonePreset: "aiAssist"
+    )
 
     static let `default` = StyleConfig(
         globalVoice: "Direct and plainspoken. Short sentences. No corporate fluff, no filler words like \"just\" or \"I wanted to\". Sounds like a founder talking, not a press release.",
@@ -68,7 +86,8 @@ struct StyleConfig: Codable {
                     "com.hnc.Discord",
                 ],
                 titleKeywords: ["whatsapp", "messenger"],
-                instructions: "Casual and warm, like texting a friend. Contractions are fine. Keep it short. No greetings or sign-offs unless dictated. Light punctuation is okay."
+                instructions: "Casual and warm, like texting a friend. Contractions are fine. Keep it short. No greetings or sign-offs unless dictated. Light punctuation is okay.",
+                tonePreset: "casual"
             ),
             ContextStyle(
                 id: "work",
@@ -80,7 +99,8 @@ struct StyleConfig: Codable {
                     "com.linear",
                 ],
                 titleKeywords: ["slack", "notion", "linear", "asana", "monday.com"],
-                instructions: "Clear, direct, professional but human. Get to the point in the first sentence. Bullets are fine if a list was dictated."
+                instructions: "Clear, direct, professional but human. Get to the point in the first sentence. Bullets are fine if a list was dictated.",
+                tonePreset: "formal"
             ),
             ContextStyle(
                 id: "email",
@@ -92,8 +112,10 @@ struct StyleConfig: Codable {
                     "com.superhuman.electron",
                 ],
                 titleKeywords: ["gmail", "inbox", "mail.google.com", "outlook", "superhuman", "compose"],
-                instructions: "Proper sentences and paragraphs. Professional but warm. Only add a greeting or sign-off if one was dictated. Break into short paragraphs where natural."
+                instructions: "Proper sentences and paragraphs. Professional but warm. Only add a greeting or sign-off if one was dictated. Break into short paragraphs where natural.",
+                tonePreset: "formal"
             ),
+            aiContext,
             ContextStyle(
                 id: "other",
                 name: "Everything else",
@@ -146,7 +168,12 @@ extension Config {
         let d = Config()
         apiKey = (try? c.decodeIfPresent(String.self, forKey: .apiKey)) ?? nil ?? d.apiKey
         openRouterKey = (try? c.decodeIfPresent(String.self, forKey: .openRouterKey)) ?? nil ?? d.openRouterKey
-        openRouterModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterModel)) ?? nil ?? d.openRouterModel
+        let storedOpenRouterModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterModel)) ?? nil ?? d.openRouterModel
+        // Move installations that still use the previous shipped default to
+        // Luna, while preserving every explicitly selected/custom model.
+        openRouterModel = storedOpenRouterModel == "google/gemini-2.5-flash-lite"
+            ? d.openRouterModel
+            : storedOpenRouterModel
         tapToLockEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .tapToLockEnabled)) ?? nil ?? d.tapToLockEnabled
         onboardingDone = (try? c.decodeIfPresent(Bool.self, forKey: .onboardingDone)) ?? nil ?? d.onboardingDone
         cleanupModel = (try? c.decodeIfPresent(String.self, forKey: .cleanupModel)) ?? nil ?? d.cleanupModel
@@ -188,7 +215,7 @@ extension Snippet {
 }
 
 extension ContextStyle {
-    private enum CodingKeys: String, CodingKey { case id, name, appBundleIds, titleKeywords, instructions }
+    private enum CodingKeys: String, CodingKey { case id, name, appBundleIds, titleKeywords, instructions, tonePreset }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -197,16 +224,30 @@ extension ContextStyle {
         appBundleIds = (try? c.decodeIfPresent([String].self, forKey: .appBundleIds)) ?? nil ?? []
         titleKeywords = (try? c.decodeIfPresent([String].self, forKey: .titleKeywords)) ?? nil ?? []
         instructions = (try? c.decodeIfPresent(String.self, forKey: .instructions)) ?? nil ?? ""
+        tonePreset = (try? c.decodeIfPresent(String.self, forKey: .tonePreset)) ?? nil
+        if tonePreset == nil,
+           let shipped = StyleConfig.default.contexts.first(where: { $0.id == id }),
+           shipped.instructions == instructions {
+            tonePreset = shipped.tonePreset
+        }
     }
 }
 
 extension StyleConfig {
-    private enum CodingKeys: String, CodingKey { case globalVoice, contexts }
+    private enum CodingKeys: String, CodingKey { case defaultsVersion, globalVoice, contexts }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        let storedVersion = (try? c.decodeIfPresent(Int.self, forKey: .defaultsVersion)) ?? nil ?? 1
+        defaultsVersion = Self.currentDefaultsVersion
         globalVoice = (try? c.decodeIfPresent(String.self, forKey: .globalVoice)) ?? nil ?? StyleConfig.default.globalVoice
         contexts = (try? c.decodeIfPresent([ContextStyle].self, forKey: .contexts)) ?? nil ?? StyleConfig.default.contexts
+        // Add newly shipped categories once, without modifying any existing
+        // context or re-adding one the user deliberately deletes later.
+        if storedVersion < 2 && !contexts.contains(where: { $0.id == "ai" }) {
+            let otherIndex = contexts.firstIndex(where: { $0.id == "other" }) ?? contexts.endIndex
+            contexts.insert(Self.aiContext, at: otherIndex)
+        }
         if !contexts.contains(where: { $0.id == "other" }) {
             contexts.append(StyleConfig.default.contexts.last!)
         }

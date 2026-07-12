@@ -2,7 +2,7 @@ import SwiftUI
 import AVFoundation
 
 /// First-run setup assistant: walks through every macOS permission and choice the
-/// app needs, with live status checks. Reopenable from the menu bar any time.
+/// app needs, with live status checks. Reopenable from the Prompter app menu.
 struct OnboardingView: View {
     @EnvironmentObject var store: ConfigStore
     @State private var step = 0

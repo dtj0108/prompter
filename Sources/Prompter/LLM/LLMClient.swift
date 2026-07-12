@@ -53,14 +53,14 @@ final class LLMClient {
 
     /// `model` is the claude CLI model; when OpenRouter is active the configured
     /// OpenRouter model is used instead (one model for everything — simpler).
-    func complete(system: String, user: String, model: String, timeout: TimeInterval = 90) async throws -> LLMResult {
+    func complete(system: String, user: String, model: String, timeout: TimeInterval = 90, temperature: Double = 0.2) async throws -> LLMResult {
         let orKey = ConfigStore.shared.config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !orKey.isEmpty {
             let orModel = ConfigStore.shared.config.openRouterModel.trimmingCharacters(in: .whitespacesAndNewlines)
             return try await completeViaOpenRouter(
                 system: system, user: user,
                 model: orModel.isEmpty ? Config.default.openRouterModel : orModel,
-                apiKey: orKey, timeout: timeout
+                apiKey: orKey, timeout: timeout, temperature: temperature
             )
         }
         let text = try await completeViaCLI(system: system, user: user, model: model, timeout: timeout)
@@ -76,7 +76,7 @@ final class LLMClient {
 
     // MARK: - OpenRouter
 
-    private func completeViaOpenRouter(system: String, user: String, model: String, apiKey: String, timeout: TimeInterval) async throws -> LLMResult {
+    private func completeViaOpenRouter(system: String, user: String, model: String, apiKey: String, timeout: TimeInterval, temperature: Double) async throws -> LLMResult {
         var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/chat/completions")!)
         request.httpMethod = "POST"
         request.timeoutInterval = timeout
@@ -91,7 +91,7 @@ final class LLMClient {
             // If the chosen model is down or rate-limited, OpenRouter tries these.
             "models": Self.fallbackModels.filter { $0 != model },
             "max_completion_tokens": 8000,
-            "temperature": 0.2,
+            "temperature": temperature,
             "messages": [
                 ["role": "system", "content": system],
                 ["role": "user", "content": user],

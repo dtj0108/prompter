@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Combine
 
 struct FrontContext {
     var appName: String
@@ -17,6 +18,40 @@ struct FrontContext {
     )
 }
 
+/// Tracks the last non-Prompter app the user activated. The Style window makes
+/// Prompter itself frontmost, so retaining the previous app lets that page offer
+/// a useful "style this app" control instead of showing Prompter.
+final class ActiveAppMonitor: ObservableObject {
+    static let shared = ActiveAppMonitor()
+
+    @Published private(set) var appName = ""
+    @Published private(set) var bundleId = ""
+
+    private var activationObserver: NSObjectProtocol?
+
+    private init() {}
+
+    func start() {
+        if let app = NSWorkspace.shared.frontmostApplication { note(app) }
+        guard activationObserver == nil else { return }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            self?.note(app)
+        }
+    }
+
+    func note(_ app: NSRunningApplication) {
+        let id = app.bundleIdentifier ?? ""
+        guard !id.isEmpty, id != Bundle.main.bundleIdentifier else { return }
+        appName = app.localizedName ?? id
+        bundleId = id
+    }
+}
+
 enum ContextDetector {
 
     /// Snapshot the frontmost app + focused window title and resolve which style context applies.
@@ -28,6 +63,7 @@ enum ContextDetector {
         guard let app = NSWorkspace.shared.frontmostApplication else {
             return FrontContext(appName: "", bundleId: "", pid: 0, windowTitle: "", style: fallback)
         }
+        ActiveAppMonitor.shared.note(app)
         let bundleId = app.bundleIdentifier ?? ""
         let name = app.localizedName ?? ""
         let title = focusedWindowTitle(pid: app.processIdentifier) ?? ""
@@ -57,8 +93,9 @@ enum ContextDetector {
     }
 
     /// Is there a blinking text cursor in the frontmost app right now?
-    /// (The focused AX element exposing a selected-text-range is the practical
-    /// signal for "this element accepts typed text".)
+    /// Native fields usually expose AXSelectedTextRange. Web/Electron editors
+    /// such as Codex may instead expose only a text role, AXEditable, or a
+    /// settable value, so recognize all of those signals.
     static func focusedElementAcceptsText() -> Bool {
         guard AXIsProcessTrusted(),
               let app = NSWorkspace.shared.frontmostApplication else { return false }
@@ -68,11 +105,51 @@ enum ContextDetector {
         guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
               let el = focused,
               CFGetTypeID(el) == AXUIElementGetTypeID() else { return false }
-        let element = el as! AXUIElement
+        var element = el as! AXUIElement
+
+        // Some web views report focus on a wrapper around the contenteditable
+        // node. Check a few ancestors as well as the focused element itself.
+        for _ in 0..<4 {
+            if elementAcceptsText(element) { return true }
+            var parent: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, kAXParentAttribute as CFString, &parent) == .success,
+                  let parent,
+                  CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+            element = parent as! AXUIElement
+        }
+        return false
+    }
+
+    private static func elementAcceptsText(_ element: AXUIElement) -> Bool {
         var names: CFArray?
         guard AXUIElementCopyAttributeNames(element, &names) == .success,
               let attrs = names as? [String] else { return false }
-        return attrs.contains(kAXSelectedTextRangeAttribute as String)
+        if attrs.contains(kAXSelectedTextRangeAttribute as String) { return true }
+
+        if attrs.contains("AXEditable") {
+            var editable: CFTypeRef?
+            if AXUIElementCopyAttributeValue(element, "AXEditable" as CFString, &editable) == .success,
+               let flag = editable as? Bool,
+               flag {
+                return true
+            }
+        }
+
+        var roleValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue) == .success,
+              let role = roleValue as? String else { return false }
+        let textRoles = [
+            kAXTextFieldRole as String,
+            kAXTextAreaRole as String,
+            kAXComboBoxRole as String,
+        ]
+        guard textRoles.contains(role) else { return false }
+
+        // Read-only code blocks can also have text roles. A settable value is the
+        // final confirmation that this particular element accepts input.
+        var settable = DarwinBoolean(false)
+        return AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success
+            && settable.boolValue
     }
 
     private static func focusedWindowTitle(pid: pid_t) -> String? {

@@ -2,16 +2,16 @@
 
 A personal replacement for Wispr Flow. Hold a key, talk, release — polished text appears wherever your cursor is. Or tap the key once and go hands-free.
 
-Built as a native macOS menu-bar app. Speech-to-text runs **fully on-device** (Apple's macOS 26 `SpeechAnalyzer` — your audio never leaves the Mac). The AI cleanup runs through **OpenRouter** (add your `sk-or-…` key in Settings; the default model `google/gemini-2.5-flash-lite` costs roughly **$1/month** at heavy use), with automatic fallback to the `claude` CLI on your Claude subscription if no key is set, and plain dictionary-corrected transcripts if neither is available.
+Built as a native macOS Dock app. Speech-to-text runs **fully on-device** (Apple's macOS 26 `SpeechAnalyzer` — your audio never leaves the Mac). The AI cleanup runs through **OpenRouter** (add your `sk-or-…` key in Settings; the default is the small, fast `openai/gpt-5.6-luna` model), with automatic fallback to the `claude` CLI on your Claude subscription if no key is set, and plain dictionary-corrected transcripts if neither is available.
 
 ## What it does
 
 - **Dictation** — hold **Right ⌥ Option**, talk, release. Prompter transcribes, cleans up filler/self-corrections, applies your dictionary and style, and pastes at your cursor. Esc cancels.
 - **Hands-free** — *tap* the dictation key instead of holding: talk as long as you want (type, click around, doesn't matter), tap again to finish.
-- **Prompt Mode** — hold (or tap) **Right ⌘ Command** and ramble what you want an AI to do. It comes out as a properly engineered prompt (built from Anthropic's + OpenAI's official prompting guides).
+- **Coding Prompt Mode** — hold (or tap) **Right ⌘ Command** and ramble what you want a coding agent to do. It preserves your intent and turns the request into a scoped, repository-aware prompt with clear verification.
 - **Dictionary** — words spelled your way (also biases the speech engine itself, not just the cleanup).
 - **Snippets** — say "my email address" and the real thing gets typed. Whole-utterance triggers expand instantly with no AI round-trip; mid-sentence triggers are expanded by the cleanup pass.
-- **Style** — a global voice plus per-context tone: it detects whether you're in Messages/WhatsApp (personal), Slack (work), Mail/Gmail (email), etc. Formal / Casual / Very casual presets, all editable.
+- **Style** — a global voice plus app-aware tone: it detects Messages/WhatsApp (casual), Slack and Mail/Gmail (professional), and Codex/ChatGPT/Claude (structured for AI). The Style page shows your last active app so you can assign it to a context or create a custom rule in one click.
 - **Insights** — words/day, time saved vs typing, streak, top apps, and actual AI spend in dollars (OpenRouter reports real cost per request).
 - **Setup Assistant** — first launch walks through every permission; reopen any time from the menu bar.
 
@@ -44,6 +44,12 @@ Also one-time: macOS 26 may show a "Prompter would like to paste from …" alert
 | `styles.json` | voice + context styles |
 | `history.jsonl` | insights log |
 | `prompts/prompt-mode.md` | the Prompt Mode meta-prompt (edit freely) |
+
+## Publishing updates
+
+Pushes to `main` run `.github/workflows/publish-update.yml` on GitHub. The workflow builds a versioned app, packages `Prompter.zip`, writes an `update.json` manifest with its SHA-256, and publishes both as the latest GitHub Release. Prompter checks the public repository named by `PrompterUpdateRepository` in `Info.plist`; Settings shows the result and only downloads or installs when the user clicks the update button.
+
+The source repository must be public (or the release assets must be mirrored publicly) because installed apps do not contain a GitHub access token. The build workflow injects its own `${{ github.repository }}` into release bundles automatically.
 | `prompter.log` | app log |
 
 ## Headless testing

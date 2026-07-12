@@ -15,9 +15,11 @@ enum Paster {
     private static var lastWriteChangeCount: Int = -1
     private static var restoreWork: DispatchWorkItem?
 
-    /// Insert text at the cursor of the frontmost app by temporarily hijacking the
-    /// pasteboard. With `allowPaste: false` the text is only copied (caller decides why).
-    static func insert(_ text: String, allowPaste: Bool = true) -> PasteResult {
+    /// Insert text at the cursor by temporarily hijacking the pasteboard. When a
+    /// target PID is supplied, deliver Cmd-V directly to that app so a transient
+    /// focus change cannot redirect the finished dictation somewhere else.
+    /// With `allowPaste: false` the text is only copied (caller decides why).
+    static func insert(_ text: String, targetPID: pid_t? = nil, allowPaste: Bool = true) -> PasteResult {
         let pasteboard = NSPasteboard.general
         restoreWork?.cancel()
         restoreWork = nil
@@ -45,7 +47,7 @@ enum Paster {
         guard AXIsProcessTrusted() else {
             return .clipboardOnly(reason: "Copied — grant Accessibility to auto-paste")
         }
-        guard sendCmdV() else {
+        guard sendCmdV(to: targetPID) else {
             return .clipboardOnly(reason: "Copied — press ⌘V to paste")
         }
 
@@ -87,7 +89,7 @@ enum Paster {
         return (items, concealed)
     }
 
-    private static func sendCmdV() -> Bool {
+    private static func sendCmdV(to targetPID: pid_t?) -> Bool {
         guard let source = CGEventSource(stateID: .combinedSessionState) else { return false }
         // Keep the user's physically-held keys (the just-released hotkey, etc.)
         // from contaminating the synthetic event.
@@ -101,8 +103,13 @@ enum Paster {
               let up = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false) else { return false }
         down.flags = .maskCommand
         up.flags = .maskCommand
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
+        if let targetPID, targetPID > 0 {
+            down.postToPid(targetPID)
+            up.postToPid(targetPID)
+        } else {
+            down.post(tap: .cghidEventTap)
+            up.post(tap: .cghidEventTap)
+        }
         return true
     }
 }

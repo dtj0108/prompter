@@ -2,21 +2,23 @@ import AppKit
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var statusItem: NSStatusItem?
     private var pauseItem: NSMenuItem?
     private var hotkeyInfoItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(.regular)
+        ActiveAppMonitor.shared.start()
         Prompts.ensurePromptModeFileExists()
         setupMainMenu()
-        setupStatusItem()
         DictationController.shared.start()
         HUD.shared.start()
+        AppUpdater.shared.checkForUpdates()
         Log.write("Prompter launched")
 
-        // First run: the setup assistant walks through permissions and the AI key.
-        if !ConfigStore.shared.config.onboardingDone {
+        // Prompter is a regular Dock app: always present a window at launch.
+        if ConfigStore.shared.config.onboardingDone {
+            WindowRouter.shared.openMain()
+        } else {
             WindowRouter.shared.openOnboarding()
         }
     }
@@ -32,19 +34,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    /// Accessory (menu-bar-only) apps have no main menu, so ⌘V/⌘C/⌘X/⌘A have
-    /// nothing to route through and silently do nothing in our windows — you
-    /// couldn't even paste an API key. A hidden Edit menu fixes all of them.
+    /// Install a standard macOS menu bar for the Dock application. This keeps
+    /// editing shortcuts working and relocates the old status-item actions into
+    /// ordinary application/navigation menus.
     private func setupMainMenu() {
         let main = NSMenu()
 
-        let appItem = NSMenuItem()
-        let appMenu = NSMenu()
+        let appItem = NSMenuItem(title: "Prompter", action: nil, keyEquivalent: "")
+        let appMenu = NSMenu(title: "Prompter")
+        appMenu.delegate = self
+        appMenu.addItem(NSMenuItem(title: "About Prompter", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""))
+        appMenu.addItem(.separator())
+        let settings = makeItem("Settings…", #selector(openSettings), ",")
+        appMenu.addItem(settings)
+        let setup = makeItem("Setup Assistant…", #selector(openOnboarding), "")
+        appMenu.addItem(setup)
+        appMenu.addItem(.separator())
+        let pause = makeItem("Pause Prompter", #selector(togglePause), "")
+        appMenu.addItem(pause)
+        pauseItem = pause
+        let info = NSMenuItem(title: hotkeyInfoText(), action: nil, keyEquivalent: "")
+        info.isEnabled = false
+        appMenu.addItem(info)
+        hotkeyInfoItem = info
+        appMenu.addItem(.separator())
+        appMenu.addItem(NSMenuItem(title: "Hide Prompter", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
         appMenu.addItem(NSMenuItem(title: "Quit Prompter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         appItem.submenu = appMenu
         main.addItem(appItem)
 
-        let editItem = NSMenuItem()
+        let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
         let edit = NSMenu(title: "Edit")
         edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
         edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
@@ -56,53 +75,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editItem.submenu = edit
         main.addItem(editItem)
 
+        let navigateItem = NSMenuItem(title: "Navigate", action: nil, keyEquivalent: "")
+        let navigate = NSMenu(title: "Navigate")
+        navigate.addItem(makeItem("Home", #selector(openMainWindow), "1"))
+        navigate.addItem(makeItem("Insights", #selector(openInsights), "2"))
+        navigate.addItem(makeItem("Dictionary", #selector(openDictionary), "3"))
+        navigate.addItem(makeItem("Snippets", #selector(openSnippets), "4"))
+        navigate.addItem(makeItem("Style", #selector(openStyle), "5"))
+        navigate.addItem(makeItem("Settings", #selector(openSettings), "6"))
+        navigateItem.submenu = navigate
+        main.addItem(navigateItem)
+
+        let windowItem = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
+        let window = NSMenu(title: "Window")
+        window.addItem(NSMenuItem(title: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"))
+        window.addItem(NSMenuItem(title: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: ""))
+        window.addItem(.separator())
+        window.addItem(NSMenuItem(title: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: ""))
+        windowItem.submenu = window
+        main.addItem(windowItem)
+        NSApp.windowsMenu = window
+
         NSApp.mainMenu = main
-    }
-
-    private func setupStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let button = item.button {
-            button.image = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Prompter")
-        }
-
-        let menu = NSMenu()
-
-        let info = NSMenuItem(title: hotkeyInfoText(), action: nil, keyEquivalent: "")
-        info.isEnabled = false
-        menu.addItem(info)
-        hotkeyInfoItem = info
-
-        menu.addItem(.separator())
-
-        let pause = NSMenuItem(title: "Pause Prompter", action: #selector(togglePause), keyEquivalent: "")
-        pause.target = self
-        menu.addItem(pause)
-        pauseItem = pause
-
-        menu.addItem(.separator())
-
-        menu.addItem(makeItem("Open Prompter…", #selector(openMainWindow), "o"))
-
-        menu.addItem(.separator())
-
-        menu.addItem(makeItem("Dictionary…", #selector(openDictionary), "d"))
-        menu.addItem(makeItem("Snippets…", #selector(openSnippets), "s"))
-        menu.addItem(makeItem("Style…", #selector(openStyle), "t"))
-        menu.addItem(makeItem("Insights…", #selector(openInsights), "i"))
-        menu.addItem(makeItem("Settings…", #selector(openSettings), ","))
-
-        menu.addItem(.separator())
-
-        menu.addItem(makeItem("Setup Assistant…", #selector(openOnboarding), ""))
-
-        menu.addItem(.separator())
-
-        let quit = NSMenuItem(title: "Quit Prompter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        menu.addItem(quit)
-
-        menu.delegate = self
-        item.menu = menu
-        statusItem = item
     }
 
     private func makeItem(_ title: String, _ action: Selector, _ key: String) -> NSMenuItem {
@@ -123,12 +117,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DictationController.shared.isPaused.toggle()
         let paused = DictationController.shared.isPaused
         pauseItem?.title = paused ? "Resume Prompter" : "Pause Prompter"
-        if let button = statusItem?.button {
-            button.image = NSImage(
-                systemSymbolName: paused ? "waveform.slash" : "waveform.circle.fill",
-                accessibilityDescription: "Prompter"
-            )
-        }
     }
 
     @objc private func openMainWindow() { WindowRouter.shared.openMain() }

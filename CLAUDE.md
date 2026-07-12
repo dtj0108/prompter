@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-**Prompter** — Drew's personal Wispr Flow replacement. A native macOS menu-bar dictation app: hold/tap a right-side modifier key, talk, and polished text is pasted at the cursor. Swift + SwiftUI, SwiftPM only (no Xcode project). Runs on macOS 26+, Apple Silicon.
+**Prompter** — Drew's personal Wispr Flow replacement. A native macOS Dock dictation app: hold/tap a right-side modifier key, talk, and polished text is pasted at the cursor. Swift + SwiftUI, SwiftPM only (no Xcode project). Runs on macOS 26+, Apple Silicon.
 
 Pipeline: hotkey (`HotkeyMonitor`) → mic (`Recorder`) → on-device STT (`STT/Transcriber.swift`, macOS 26 `SpeechAnalyzer`/`SpeechTranscriber`) → AI cleanup (`LLM/LLMClient.swift`: OpenRouter if key set, else `claude` CLI, else raw dictionary corrections) → paste (`Output/Paster.swift`) → log (`InsightsStore`). Orchestrated by `DictationController`.
 
@@ -27,7 +27,7 @@ After installing a rebuilt app: quit the running instance first (`pkill -x Promp
 ## Critical gotchas
 
 - **Ad-hoc signing resets TCC**: every rebuilt binary loses Microphone/Accessibility grants. Permanent fix: create a self-signed "prompter-dev" Code Signing cert in Keychain Access once, then `./scripts/build-app.sh --identity prompter-dev --install`.
-- **Accessory app + missing main menu**: the app is `LSUIElement`; ⌘V/⌘C only work in its windows because `AppDelegate.setupMainMenu()` installs a hidden Edit menu. Don't remove it.
+- **Main menu is programmatic**: there is no storyboard, so `AppDelegate.setupMainMenu()` provides the app, Edit, Navigate, and Window menus. Keep the Edit menu so standard ⌘V/⌘C shortcuts continue to work.
 - **Never lose the user's words**: every failure path in `DictationController`/`LLMClient` must fall back to pasting/copying the raw transcript, never dropping it.
 - **Tolerant decoding**: all Codable models in `Storage/Models.swift` have custom `init(from:)` with `decodeIfPresent` per field. When adding a config/model field, add it to `CodingKeys` AND the tolerant init, or user data gets wiped on decode failure (loadJSON backs up bad files, but still).
 - **Hotkeys are passive NSEvent monitors** (never swallow events). Hold = push-to-talk, tap = hands-free latch (see `HotkeyMonitor` state machine: idle → pending → active/latched). Global monitors registered before Accessibility is granted are dead until re-registered — `DictationController.start()` has a timer for this.
@@ -38,7 +38,9 @@ After installing a rebuilt app: quit the running instance first (`pkill -x Promp
 
 All state in `~/Library/Application Support/Prompter/`: `config.json` (incl. OpenRouter key, chmod 600), `dictionary.json`, `snippets.json`, `styles.json`, `history.jsonl` (insights), `prompts/prompt-mode.md` (user-editable meta-prompt), `prompter.log` (read this first when debugging).
 
-OpenRouter default model: `google/gemini-2.5-flash-lite` (~$0.03/day); request sends a fallback `models` array; response `usage.cost` is logged per dictation into insights.
+OpenRouter default model: `openai/gpt-5.6-luna`; request sends a fallback `models` array; response `usage.cost` is logged per dictation into insights.
+
+Public updates are built by `.github/workflows/publish-update.yml` on pushes to `main`. It publishes `Prompter.zip` plus `update.json` to GitHub Releases. `AppUpdater` checks the public repository embedded as `PrompterUpdateRepository`; never embed a GitHub token in the app.
 
 ## UI map
 

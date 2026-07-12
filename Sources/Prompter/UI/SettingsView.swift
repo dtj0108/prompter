@@ -4,6 +4,7 @@ import ServiceManagement
 
 struct SettingsView: View {
     @EnvironmentObject var store: ConfigStore
+    @ObservedObject private var updater = AppUpdater.shared
     @State private var micStatus = Recorder.micAuthorized()
     @State private var axStatus = AXIsProcessTrusted()
     @State private var inputMonStatus = CGPreflightListenEventAccess()
@@ -11,7 +12,8 @@ struct SettingsView: View {
     @State private var testing = false
 
     var body: some View {
-        Form {
+        VStack(spacing: 0) {
+            Form {
             Section("Hotkeys") {
                 Picker("Dictation", selection: $store.config.dictationHotkey) {
                     ForEach(HotkeyKey.allCases) { key in
@@ -41,30 +43,25 @@ struct SettingsView: View {
                 Text("Off = raw transcript with dictionary corrections only.")
                     .font(.caption).foregroundStyle(.secondary)
                 SecureField("OpenRouter API key (sk-or-…)", text: $store.config.openRouterKey)
-                HStack {
-                    TextField("Model", text: $store.config.openRouterModel)
-                    Menu("Suggested") {
-                        Button("google/gemini-2.5-flash-lite — default, ~$1/mo") {
-                            store.config.openRouterModel = "google/gemini-2.5-flash-lite"
-                        }
-                        Button("openai/gpt-oss-120b — cheapest, ~$0.35/mo") {
-                            store.config.openRouterModel = "openai/gpt-oss-120b"
-                        }
-                        Button("qwen/qwen3-30b-a3b-instruct-2507 — ~$0.40/mo") {
-                            store.config.openRouterModel = "qwen/qwen3-30b-a3b-instruct-2507"
-                        }
-                        Button("meta-llama/llama-3.3-70b-instruct — ~$0.75/mo") {
-                            store.config.openRouterModel = "meta-llama/llama-3.3-70b-instruct"
-                        }
-                        Button("google/gemma-4-31b-it:free — free tier") {
-                            store.config.openRouterModel = "google/gemma-4-31b-it:free"
-                        }
+                Picker("Model", selection: $store.config.openRouterModel) {
+                    ForEach(AIModelCatalog.choices) { choice in
+                        Text("\(choice.name) — \(choice.detail)").tag(choice.id)
                     }
-                    .fixedSize()
+                    if AIModelCatalog.choice(for: store.config.openRouterModel) == nil {
+                        Text("Custom — \(store.config.openRouterModel)").tag(store.config.openRouterModel)
+                    }
+                }
+                .pickerStyle(.menu)
+                LabeledContent("Provider model ID", value: store.config.openRouterModel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                DisclosureGroup("Use a custom OpenRouter model") {
+                    TextField("Provider model ID", text: $store.config.openRouterModel)
+                        .textFieldStyle(.roundedBorder)
                 }
                 Link("Get a key at openrouter.ai/keys", destination: URL(string: "https://openrouter.ai/settings/keys")!)
                     .font(.caption)
-                Text("Monthly estimates assume ~150 dictations/day. “:free” models cost nothing but are capped at 50 requests/day (1,000/day after a one-time $10 credit top-up) and may let the provider train on your text — paid models are private and still pennies.")
+                Text("GPT-5.6 Luna is the smallest, fastest GPT-5.6 tier. “:free” models may be request-limited and may let the provider train on your text.")
                     .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Backend in use", value: LLMClient.shared.backendDescription)
                 HStack {
@@ -154,9 +151,35 @@ struct SettingsView: View {
                 Text("The meta-prompt that turns your rambling into a well-engineered prompt. It's a text file — edit freely.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            }
+            .formStyle(.grouped)
+
+            Divider()
+            HStack(spacing: 10) {
+                Button {
+                    updater.performPrimaryAction()
+                } label: {
+                    Label(updateButtonTitle, systemImage: "arrow.down.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(updateButtonDisabled)
+
+                if !updateStatusText.isEmpty {
+                    Text(updateStatusText)
+                        .font(.caption)
+                        .foregroundStyle(updateFailed ? .red : .secondary)
+                        .lineLimit(2)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .background(.bar)
         }
-        .formStyle(.grouped)
-        .onAppear { refreshPermissions() }
+        .onAppear {
+            refreshPermissions()
+            if updater.state == .idle { updater.checkForUpdates() }
+        }
     }
 
     private func refreshPermissions() {
@@ -187,5 +210,38 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private var updateButtonTitle: String {
+        switch updater.state {
+        case .checking: return "Checking…"
+        case .available(let update): return "Install Update \(update.version)"
+        case .downloading: return "Downloading…"
+        default: return "Update Now"
+        }
+    }
+
+    private var updateButtonDisabled: Bool {
+        switch updater.state {
+        case .checking, .downloading: return true
+        default: return false
+        }
+    }
+
+    private var updateStatusText: String {
+        switch updater.state {
+        case .idle: return ""
+        case .checking: return "Checking GitHub Releases…"
+        case .upToDate: return "Prompter \(updater.currentVersion) is up to date."
+        case .available(let update):
+            return update.notes.isEmpty ? "Version \(update.version) is available." : update.notes
+        case .downloading: return "Downloading and verifying the update…"
+        case .failed(let message): return message
+        }
+    }
+
+    private var updateFailed: Bool {
+        if case .failed = updater.state { return true }
+        return false
     }
 }

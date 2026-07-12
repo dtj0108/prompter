@@ -21,6 +21,7 @@ enum Paths {
     static var historyFile: URL { appSupport.appendingPathComponent("history.jsonl") }
     static var promptModeFile: URL { promptsDir.appendingPathComponent("prompt-mode.md") }
     static var logFile: URL { appSupport.appendingPathComponent("prompter.log") }
+    static var updateLogFile: URL { appSupport.appendingPathComponent("update.log") }
 }
 
 enum Log {

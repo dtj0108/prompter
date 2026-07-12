@@ -183,8 +183,9 @@ final class DictationController {
                     || (front?.bundleIdentifier == current.context.bundleId
                         && front?.processIdentifier == current.context.pid)
                 let canPasteHere = sameApp || ContextDetector.focusedElementAcceptsText()
+                let targetPID = front?.processIdentifier
 
-                var pasteResult = Paster.insert(finalText, allowPaste: canPasteHere)
+                var pasteResult = Paster.insert(finalText, targetPID: targetPID, allowPaste: canPasteHere)
                 if !canPasteHere {
                     pasteResult = .clipboardOnly(reason: "No text cursor — ⌘V to paste")
                 }
@@ -238,6 +239,7 @@ final class DictationController {
         let system: String
         let user: String
         let model: String
+        let temperature: Double
         switch session.mode {
         case .dictate:
             // Whole utterance is a snippet trigger ("my email address") → expand
@@ -251,15 +253,18 @@ final class DictationController {
             system = Prompts.cleanupSystemPrompt(context: session.context, style: StyleStore.shared.style, dictionary: dictionary, snippets: SnippetStore.shared.snippets)
             user = Prompts.cleanupUserPrompt(transcript: transcript)
             model = config.cleanupModel
+            temperature = 0.2
         case .prompt:
             system = Prompts.promptModeSystemPrompt(dictionary: dictionary)
             user = Prompts.promptModeUserPrompt(transcript: transcript)
             model = config.promptModel
+            // Prompt rewriting should be repeatable and instruction-faithful.
+            temperature = 0
         }
 
         let llmStart = Date()
         do {
-            let result = try await LLMClient.shared.complete(system: system, user: user, model: model)
+            let result = try await LLMClient.shared.complete(system: system, user: user, model: model, temperature: temperature)
             let ms = Int(Date().timeIntervalSince(llmStart) * 1000)
             return (result.text, ms, true, result.costUSD)
         } catch {

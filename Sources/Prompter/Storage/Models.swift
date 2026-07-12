@@ -142,6 +142,10 @@ struct InsightEvent: Codable, Identifiable {
     var llmMs: Int
     var engine: String
     var costUSD: Double = 0
+    /// What the user actually said (the raw transcript) and what was pasted.
+    /// Empty on events logged before these fields existed.
+    var rawText: String = ""
+    var finalText: String = ""
 }
 
 // MARK: - Modes
@@ -257,6 +261,7 @@ extension StyleConfig {
 extension InsightEvent {
     private enum CodingKeys: String, CodingKey {
         case id, ts, app, bundleId, context, mode, audioSec, words, sttMs, llmMs, engine, costUSD
+        case rawText, finalText
     }
 
     init(from decoder: Decoder) throws {
@@ -273,5 +278,7 @@ extension InsightEvent {
         llmMs = (try? c.decodeIfPresent(Int.self, forKey: .llmMs)) ?? nil ?? 0
         engine = (try? c.decodeIfPresent(String.self, forKey: .engine)) ?? nil ?? ""
         costUSD = (try? c.decodeIfPresent(Double.self, forKey: .costUSD)) ?? nil ?? 0
+        rawText = (try? c.decodeIfPresent(String.self, forKey: .rawText)) ?? nil ?? ""
+        finalText = (try? c.decodeIfPresent(String.self, forKey: .finalText)) ?? nil ?? ""
     }
 }

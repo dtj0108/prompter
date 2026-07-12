@@ -62,7 +62,7 @@ enum HeadlessCLI {
                     model: ConfigStore.shared.config.promptModel,
                     temperature: 0
                 )
-                print(reply.text)
+                print(Prompts.promptModeOutput(polishedPrompt: reply.text, transcript: args[2]))
             }
             return true
 

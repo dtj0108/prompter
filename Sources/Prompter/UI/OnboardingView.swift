@@ -5,7 +5,13 @@ import AVFoundation
 /// app needs, with live status checks. Reopenable from the Prompter app menu.
 struct OnboardingView: View {
     @EnvironmentObject var store: ConfigStore
-    @State private var step = 0
+    @State private var step: Int
+
+    /// Jump straight to a step — used when a permission was lost (e.g. after an
+    /// app update reset TCC) and the assistant reopens on the broken step.
+    init(startStep: Int = 0) {
+        _step = State(initialValue: min(max(startStep, 0), 4))
+    }
     @State private var micGranted = Recorder.micAuthorized()
     @State private var axGranted = AXIsProcessTrusted()
     @State private var testResult = ""
@@ -98,9 +104,7 @@ struct OnboardingView: View {
             statusRow(granted: micGranted, label: micGranted ? "Microphone access granted" : "Microphone access needed")
 
             if !micGranted {
-                Button("Allow Microphone") {
-                    Task { _ = await Recorder.requestMicAccess(); micGranted = Recorder.micAuthorized() }
-                }
+                Button("Allow Microphone") { requestMic() }
                 .buttonStyle(.borderedProminent)
                 Text("macOS will show a dialog — click “Allow”. If no dialog appears (it was denied before), open System Settings → Privacy & Security → Microphone and switch Prompter on.")
                     .font(.callout).foregroundStyle(.secondary)
@@ -109,6 +113,11 @@ struct OnboardingView: View {
                 }
             }
         }
+        .onAppear { if !micGranted { requestMic() } }
+    }
+
+    private func requestMic() {
+        Task { _ = await Recorder.requestMicAccess(); micGranted = Recorder.micAuthorized() }
     }
 
     // MARK: Step 3 — Accessibility
@@ -121,20 +130,47 @@ struct OnboardingView: View {
             statusRow(granted: axGranted, label: axGranted ? "Accessibility granted" : "Accessibility needed")
 
             if !axGranted {
-                Button("Grant Accessibility") {
-                    let options = ["AXTrustedCheckOptionPrompt" as CFString as String: true] as CFDictionary
-                    _ = AXIsProcessTrustedWithOptions(options)
-                }
+                Button("Grant Accessibility") { promptAccessibility() }
                 .buttonStyle(.borderedProminent)
                 Text("In the dialog, click “Open System Settings”, then turn ON the switch next to Prompter in the Accessibility list. This screen updates by itself once it's on.")
                     .font(.callout).foregroundStyle(.secondary)
-                Button("Open System Settings → Accessibility") {
-                    openPrivacyPane("Privacy_Accessibility")
+                Text("Prompter already ON in that list but still not working? The old grant went stale when the app was updated — this clears it so you can grant it fresh.")
+                    .font(.callout).foregroundStyle(.secondary)
+                HStack {
+                    Button("Fix Stale Permission") { fixStaleAccessibility() }
+                    Button("Open System Settings → Accessibility") {
+                        openPrivacyPane("Privacy_Accessibility")
+                    }
                 }
             } else {
                 Text("One more macOS dialog may appear the very first time text is inserted (“Prompter would like to paste”) — choose “Always Allow”.")
                     .font(.callout).foregroundStyle(.secondary)
             }
+        }
+        .onAppear { if !axGranted { promptAccessibility() } }
+    }
+
+    private func promptAccessibility() {
+        let options = ["AXTrustedCheckOptionPrompt" as CFString as String: true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+    }
+
+    /// A reinstalled/re-signed binary invalidates the existing Accessibility grant:
+    /// System Settings still shows Prompter ON but AXIsProcessTrusted() is false.
+    /// Clear our own TCC entry so a fresh grant dialog can appear.
+    private func fixStaleAccessibility() {
+        DispatchQueue.global().async {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            process.arguments = ["reset", "Accessibility", Bundle.main.bundleIdentifier ?? "com.drew.prompter"]
+            do {
+                try process.run()
+                process.waitUntilExit()
+                Log.write("tccutil reset Accessibility exited \(process.terminationStatus)")
+            } catch {
+                Log.write("tccutil reset failed: \(error)")
+            }
+            DispatchQueue.main.async { promptAccessibility() }
         }
     }
 

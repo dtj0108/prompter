@@ -179,6 +179,8 @@ final class InsightsStore: ObservableObject {
             try? handle.write(contentsOf: line)
         } else {
             try? line.write(to: Paths.historyFile)
+            // Full transcripts live here now — keep it private like config.json.
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Paths.historyFile.path)
         }
     }
 

@@ -31,7 +31,7 @@ After installing a rebuilt app: quit the running instance first (`pkill -x Promp
 - **Never lose the user's words**: every failure path in `DictationController`/`LLMClient` must fall back to pasting/copying the raw transcript, never dropping it.
 - **Tolerant decoding**: all Codable models in `Storage/Models.swift` have custom `init(from:)` with `decodeIfPresent` per field. When adding a config/model field, add it to `CodingKeys` AND the tolerant init, or user data gets wiped on decode failure (loadJSON backs up bad files, but still).
 - **Hotkeys are passive NSEvent monitors** (never swallow events). Hold = push-to-talk, tap = hands-free latch (see `HotkeyMonitor` state machine: idle → pending → active/latched). Global monitors registered before Accessibility is granted are dead until re-registered — `DictationController.start()` has a timer for this.
-- **Paste rule**: paste only when the original app is still frontmost OR the focused element accepts text (`ContextDetector.focusedElementAcceptsText()`); otherwise clipboard-only with a HUD notice.
+- **Paste rule**: paste by default — same app, confirmed text cursor, or when accessibility can't tell (`ContextDetector.focusedTextTarget()` returns `.unknown`). Clipboard-only with a HUD notice ONLY when focus provably rejects text (`.rejectsText`: desktop, a button, …) or a secure field is active.
 - Swift 6 concurrency is strict here; prefer `DispatchQueue.main.async` hops at boundaries (audio tap thread, AX calls, process waiters) as the existing code does.
 
 ## Data & config

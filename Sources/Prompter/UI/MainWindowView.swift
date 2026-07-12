@@ -208,6 +208,8 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(6)
                 }
+
+                historySection
             }
             .padding(24)
         }
@@ -277,5 +279,154 @@ struct HomeView: View {
                 .foregroundStyle(ok ? .green : .orange)
             Text(text).font(.callout)
         }
+    }
+
+    // MARK: History
+
+    /// Every dictation, newest first. Events logged before text capture existed
+    /// carry no text and are skipped.
+    private var historyEvents: [InsightEvent] {
+        insights.events
+            .filter { !$0.finalText.isEmpty || !$0.rawText.isEmpty }
+            .sorted { $0.ts > $1.ts }
+    }
+
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("History").font(.title3.bold())
+            if historyEvents.isEmpty {
+                Text("Everything you dictate will show up here.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 18)
+            } else {
+                LazyVStack(spacing: 8) {
+                    ForEach(historyEvents) { event in
+                        HistoryRow(event: event)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - History row
+
+/// One past dictation. Collapsed: a two-line preview of what was pasted.
+/// Expanded: the full text — and for prompt mode, "You said" vs "Prompt"
+/// so the transformation is visible.
+private struct HistoryRow: View {
+    let event: InsightEvent
+    @State private var expanded = false
+    @State private var copied = false
+    @State private var hovered = false
+
+    private var isPrompt: Bool { event.mode == DictationMode.prompt.rawValue }
+    /// The pasted text; raw transcript is the fallback for LLM-skipped events.
+    private var outputText: String { event.finalText.isEmpty ? event.rawText : event.finalText }
+    private var hasDistinctRaw: Bool {
+        !event.rawText.isEmpty && event.rawText != outputText
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: isPrompt ? "wand.and.stars" : "mic.fill")
+                    .font(.caption)
+                    .foregroundStyle(isPrompt ? Color.purple : Color(red: 1.0, green: 0.27, blue: 0.23))
+                    .frame(width: 16)
+                Text(isPrompt ? "Prompt" : "Dictation")
+                    .font(.caption.weight(.semibold))
+                if !event.app.isEmpty {
+                    Text("→ \(event.app)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(Self.timestamp(event.ts))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(outputText, forType: .string)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+                } label: {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        .font(.caption)
+                        .foregroundStyle(copied ? .green : .secondary)
+                }
+                .buttonStyle(.plain)
+                .opacity(hovered || copied ? 1 : 0)
+                .help("Copy")
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(expanded ? 180 : 0))
+            }
+
+            if expanded {
+                if isPrompt && hasDistinctRaw {
+                    // What was said vs the prompt that came out of it.
+                    textBlock(label: "You said", text: event.rawText, dimmed: true)
+                    textBlock(label: "Prompt", text: outputText, dimmed: false)
+                } else {
+                    if hasDistinctRaw {
+                        textBlock(label: "You said", text: event.rawText, dimmed: true)
+                    }
+                    textBlock(label: hasDistinctRaw ? "Result" : nil, text: outputText, dimmed: false)
+                }
+            } else {
+                Text(outputText)
+                    .font(.callout)
+                    .lineLimit(2)
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.secondary.opacity(hovered ? 0.1 : 0.07))
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture {
+            withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
+        }
+        .onHover { inside in
+            withAnimation(.easeOut(duration: 0.12)) { hovered = inside }
+        }
+    }
+
+    @ViewBuilder
+    private func textBlock(label: String?, text: String, dimmed: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let label {
+                Text(label.uppercased())
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(dimmed ? .secondary : .primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private static func timestamp(_ date: Date) -> String {
+        let df = DateFormatter()
+        if Calendar.current.isDateInToday(date) {
+            df.dateStyle = .none
+            df.timeStyle = .short
+        } else {
+            df.dateStyle = .medium
+            df.timeStyle = .short
+        }
+        return df.string(from: date)
     }
 }

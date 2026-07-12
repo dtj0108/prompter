@@ -92,32 +92,42 @@ enum ContextDetector {
         return nil
     }
 
-    /// Is there a blinking text cursor in the frontmost app right now?
+    /// What is keyboard focus pointing at in the frontmost app right now?
+    enum FocusedTextTarget {
+        case acceptsText   // a text field/area/editor has focus
+        case rejectsText   // focus is on something that is definitely not text (desktop, button, list…)
+        case unknown       // accessibility couldn't tell us (AX untrusted, app exposes nothing)
+    }
+
+    /// Probe the focused element for a text cursor.
     /// Native fields usually expose AXSelectedTextRange. Web/Electron editors
     /// such as Codex may instead expose only a text role, AXEditable, or a
-    /// settable value, so recognize all of those signals.
-    static func focusedElementAcceptsText() -> Bool {
+    /// settable value, so recognize all of those signals. Apps with broken or
+    /// missing AX support return `.unknown` — callers should treat that as
+    /// pasteable, and reserve copy-only for a definite `.rejectsText`.
+    static func focusedTextTarget() -> FocusedTextTarget {
         guard AXIsProcessTrusted(),
-              let app = NSWorkspace.shared.frontmostApplication else { return false }
+              let app = NSWorkspace.shared.frontmostApplication else { return .unknown }
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(appElement, 0.3)
         var focused: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
               let el = focused,
-              CFGetTypeID(el) == AXUIElementGetTypeID() else { return false }
+              CFGetTypeID(el) == AXUIElementGetTypeID() else { return .unknown }
         var element = el as! AXUIElement
 
         // Some web views report focus on a wrapper around the contenteditable
         // node. Check a few ancestors as well as the focused element itself.
         for _ in 0..<4 {
-            if elementAcceptsText(element) { return true }
+            if elementAcceptsText(element) { return .acceptsText }
             var parent: CFTypeRef?
             guard AXUIElementCopyAttributeValue(element, kAXParentAttribute as CFString, &parent) == .success,
                   let parent,
                   CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
             element = parent as! AXUIElement
         }
-        return false
+        // The app answered and nothing in the focus chain takes text.
+        return .rejectsText
     }
 
     private static func elementAcceptsText(_ element: AXUIElement) -> Bool {

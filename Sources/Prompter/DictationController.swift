@@ -171,18 +171,20 @@ final class DictationController {
                 return
             }
 
-            let (finalText, llmMs, usedLLM, costUSD) = await self.transform(transcript: transcript, session: current)
+            let rawTranscript = transcript
+            let (finalText, llmMs, usedLLM, costUSD) = await self.transform(transcript: rawTranscript, session: current)
 
             await MainActor.run {
                 // Paste wherever the user's cursor is NOW: same app as when they
-                // dictated, or a different app that has a blinking text cursor
-                // (they clicked into it while we were polishing). Only refuse when
-                // the app changed AND there's no text field focused there.
+                // dictated, or a different app they clicked into while we were
+                // polishing. Paste by default — even when accessibility can't
+                // confirm a text cursor — and go clipboard-only ONLY when focus
+                // is provably somewhere text can't go (desktop, a button, …).
                 let front = NSWorkspace.shared.frontmostApplication
                 let sameApp = current.context.bundleId.isEmpty
                     || (front?.bundleIdentifier == current.context.bundleId
                         && front?.processIdentifier == current.context.pid)
-                let canPasteHere = sameApp || ContextDetector.focusedElementAcceptsText()
+                let canPasteHere = sameApp || ContextDetector.focusedTextTarget() != .rejectsText
                 let targetPID = front?.processIdentifier
 
                 var pasteResult = Paster.insert(finalText, targetPID: targetPID, allowPaste: canPasteHere)
@@ -202,7 +204,9 @@ final class DictationController {
                     sttMs: sttMs,
                     llmMs: llmMs,
                     engine: "apple-speechanalyzer",
-                    costUSD: costUSD
+                    costUSD: costUSD,
+                    rawText: rawTranscript,
+                    finalText: finalText
                 ))
 
                 switch pasteResult {
@@ -266,7 +270,10 @@ final class DictationController {
         do {
             let result = try await LLMClient.shared.complete(system: system, user: user, model: model, temperature: temperature)
             let ms = Int(Date().timeIntervalSince(llmStart) * 1000)
-            return (result.text, ms, true, result.costUSD)
+            let finalText = session.mode == .prompt
+                ? Prompts.promptModeOutput(polishedPrompt: result.text, transcript: transcript)
+                : result.text
+            return (finalText, ms, true, result.costUSD)
         } catch {
             Log.write("llm transform failed (\(session.mode.rawValue)): \(error)")
             let ms = Int(Date().timeIntervalSince(llmStart) * 1000)

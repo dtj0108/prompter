@@ -16,22 +16,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.write("Prompter launched")
 
         // Prompter is a regular Dock app: always present a window at launch.
-        if ConfigStore.shared.config.onboardingDone {
-            WindowRouter.shared.openMain()
-        } else {
-            WindowRouter.shared.openOnboarding()
-        }
+        presentLaunchWindow()
     }
 
     /// Double-clicking Prompter in Applications while it's already running lands here:
     /// open the main window (or the setup assistant if it was never finished).
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if ConfigStore.shared.config.onboardingDone {
-            WindowRouter.shared.openMain()
-        } else {
-            WindowRouter.shared.openOnboarding()
-        }
+        presentLaunchWindow()
         return true
+    }
+
+    /// Main window normally — but if a required permission is missing (an app
+    /// update resets TCC grants), reopen the setup assistant on the broken step
+    /// so the user can re-grant instead of silently having dead hotkeys.
+    private func presentLaunchWindow() {
+        guard ConfigStore.shared.config.onboardingDone else {
+            WindowRouter.shared.openOnboarding()
+            return
+        }
+        if !Recorder.micAuthorized() {
+            Log.write("microphone permission missing at launch — reopening setup assistant")
+            WindowRouter.shared.openOnboarding(startStep: 1)
+        } else if !AXIsProcessTrusted() {
+            Log.write("accessibility permission missing at launch — reopening setup assistant")
+            WindowRouter.shared.openOnboarding(startStep: 2)
+        } else {
+            WindowRouter.shared.openMain()
+        }
     }
 
     /// Install a standard macOS menu bar for the Dock application. This keeps

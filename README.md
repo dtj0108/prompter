@@ -15,14 +15,14 @@ Requirements:
 - Apple Silicon Mac
 - macOS 26 or newer
 - Microphone and Accessibility permissions
-- Optional: an [OpenRouter API key](https://openrouter.ai/keys) for Whisper transcription and AI cleanup
+- Optional: an [OpenRouter API key](https://openrouter.ai/keys) for fast AI cleanup, Prompt Mode, and opt-in Whisper transcription
 
 To install:
 
 1. Unzip `Prompter.zip` and move `Prompter.app` to Applications.
 2. Open Prompter. If macOS blocks the first launch, right-click the app, choose **Open**, then confirm.
 3. Follow the Setup Assistant to grant Microphone and Accessibility access.
-4. Add your OpenRouter key in **Settings → AI models** if you want cloud transcription.
+4. Add your OpenRouter key in **Settings → AI models** if you want AI cleanup or Prompt Mode. Cloud transcription remains a separate opt-in.
 
 After installation, Prompter can check for and install new releases from its Settings window.
 
@@ -41,17 +41,17 @@ Pressing another key while holding a Prompter hotkey cancels the recording, so n
 
 ## How transcription works
 
-With an OpenRouter key configured, Prompter records the native microphone audio to a temporary WAV and sends it to OpenRouter's Whisper Large V3 Turbo transcription endpoint. Apple's on-device SpeechAnalyzer runs as an automatic fallback. The temporary audio file is deleted after the request completes.
+Apple's on-device SpeechAnalyzer is the default transcription engine, even when an OpenRouter key is configured. This keeps the first step fast, private, and free. OpenRouter remains optional for the cleanup and Prompt Mode rewrite that follows; Gemini Flash Lite is the fast, inexpensive default.
 
-Without an OpenRouter key, transcription stays entirely on the Mac using Apple's speech engine. Optional text cleanup can use OpenRouter, a locally authenticated `claude` CLI, or plain dictionary corrections.
+Cloud transcription is a separate opt-in setting. When enabled, Prompter records the native microphone audio to a temporary WAV and sends it to OpenRouter's Whisper Large V3 Turbo endpoint, with Apple still running as a fallback. The temporary audio file is deleted after the request completes. Without an OpenRouter key, optional text cleanup can use a locally authenticated `claude` CLI or plain dictionary corrections.
 
 ## Privacy and cost
 
 - Prompter is free. You do not pay us to download, install, or use it.
 - OpenRouter and other optional third-party services may charge for API usage under their own terms.
 - Settings, dictionary entries, snippets, styles, and history are stored locally on your Mac.
-- Audio is uploaded only when an OpenRouter key is configured; temporary recordings are deleted after transcription.
-- Without an OpenRouter key, speech transcription remains on-device.
+- Audio is uploaded only when **Use OpenRouter for transcription** is explicitly enabled; temporary recordings are deleted after transcription.
+- By default, speech transcription remains on-device even when OpenRouter is used for text cleanup or Prompt Mode.
 
 ## Build from source
 

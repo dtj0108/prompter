@@ -38,7 +38,14 @@ final class Recorder {
     func start() throws {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
-        prepareCloudRecording(inputFormat: format)
+        let config = ConfigStore.shared.config
+        let cloudTranscriptionEnabled = config.useOpenRouterTranscription
+            && !config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if cloudTranscriptionEnabled {
+            prepareCloudRecording(inputFormat: format)
+        } else {
+            discardRecording()
+        }
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, when in
             guard let self else { return }

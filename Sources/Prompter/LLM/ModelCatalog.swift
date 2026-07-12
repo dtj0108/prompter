@@ -26,7 +26,7 @@ enum AIModelCatalog {
         AIModelChoice(id: "openai/gpt-5.6-luna", name: "GPT 5.6", detail: "Luna — smallest GPT-5.6"),
         AIModelChoice(id: "x-ai/grok-4.5", name: "Grok 4.5", detail: "xAI"),
         AIModelChoice(id: "anthropic/claude-sonnet-5", name: "Sun 5", detail: "Claude Sonnet 5"),
-        AIModelChoice(id: "google/gemini-3.1-flash-lite", name: "Gemini Flash", detail: "Gemini 3.1 Flash Lite"),
+        AIModelChoice(id: "google/gemini-3.1-flash-lite", name: "Gemini Flash", detail: "Fast & inexpensive"),
     ]
 
     static func choice(for id: String) -> AIModelChoice? {

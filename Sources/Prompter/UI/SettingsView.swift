@@ -43,6 +43,9 @@ struct SettingsView: View {
                 Text("Off = raw transcript with dictionary corrections only.")
                     .font(.caption).foregroundStyle(.secondary)
                 SecureField("OpenRouter API key (sk-or-…)", text: $store.config.openRouterKey)
+                Toggle("Use OpenRouter for transcription", isOn: $store.config.useOpenRouterTranscription)
+                Text("Off = fast, private Apple transcription. OpenRouter remains available for cleanup and Prompt Mode.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Picker("Transcription model", selection: $store.config.openRouterTranscriptionModel) {
                     ForEach(TranscriptionModelCatalog.choices) { choice in
                         Text("\(choice.name) — \(choice.detail)").tag(choice.id)
@@ -52,6 +55,7 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
+                .disabled(!store.config.useOpenRouterTranscription)
                 Picker("Cleanup model", selection: $store.config.openRouterCleanupModel) {
                     ForEach(AIModelCatalog.choices) { choice in
                         Text("\(choice.name) — \(choice.detail)").tag(choice.id)
@@ -70,7 +74,7 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                Text("With a key, audio is transcribed by Whisper Turbo. Apple's on-device transcriber runs in parallel as the automatic fallback. Cleanup and Prompt Mode are separate text-model passes.")
+                Text("Gemini Flash Lite is the fast, inexpensive default for cleanup and Prompt Mode. Cloud transcription is a separate opt-in; Apple stays the default.")
                     .font(.caption).foregroundStyle(.secondary)
                 DisclosureGroup("Use custom OpenRouter model IDs") {
                     TextField("Transcription model ID", text: $store.config.openRouterTranscriptionModel)

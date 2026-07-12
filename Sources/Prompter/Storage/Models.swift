@@ -5,13 +5,18 @@ import Foundation
 struct Config: Codable {
     var apiKey: String = ""
     var openRouterKey: String = ""
-    var openRouterModel: String = "openai/gpt-5.6-luna"
-    /// Primary speech-to-text model when an OpenRouter key is configured.
-    /// Apple's on-device SpeechAnalyzer remains the automatic fallback.
+    /// Fast, inexpensive text model used by Prompt Mode.
+    var openRouterModel: String = "google/gemini-3.1-flash-lite"
+    /// Off by default: Apple's local SpeechAnalyzer is the fast primary path.
+    var useOpenRouterTranscription: Bool = false
+    /// Optional cloud speech-to-text model when explicitly enabled.
     var openRouterTranscriptionModel: String = "openai/whisper-large-v3-turbo"
-    /// Dictation cleanup runs on every utterance, so use OpenRouter's free
-    /// router by default. Prompt Mode keeps its separate, user-selected model.
-    var openRouterCleanupModel: String = "openrouter/free"
+    /// Dictation cleanup runs on every utterance, so use the same fast,
+    /// inexpensive model by default.
+    var openRouterCleanupModel: String = "google/gemini-3.1-flash-lite"
+    /// One-shot migrations for shipped model defaults; explicit later choices
+    /// must always survive relaunches.
+    var modelDefaultsVersion: Int = 1
     var cleanupModel: String = "claude-haiku-4-5-20251001"
     var promptModel: String = "claude-sonnet-5"
     var claudeCLIPath: String = ""
@@ -199,7 +204,7 @@ enum PromptAssistLevel: String, CaseIterable, Identifiable {
 
 extension Config {
     private enum CodingKeys: String, CodingKey {
-        case apiKey, openRouterKey, openRouterModel, openRouterTranscriptionModel, openRouterCleanupModel, cleanupModel, promptModel, claudeCLIPath
+        case apiKey, openRouterKey, openRouterModel, useOpenRouterTranscription, openRouterTranscriptionModel, openRouterCleanupModel, modelDefaultsVersion, cleanupModel, promptModel, claudeCLIPath
         case dictationHotkey, promptHotkey, tapToLockEnabled
         case llmCleanupEnabled, holdThresholdMs, pasteRestoreDelayMs, maxRecordingSec
         case soundsEnabled, showIdleIndicator, launchAtLogin, onboardingDone
@@ -211,19 +216,31 @@ extension Config {
         let d = Config()
         apiKey = (try? c.decodeIfPresent(String.self, forKey: .apiKey)) ?? nil ?? d.apiKey
         openRouterKey = (try? c.decodeIfPresent(String.self, forKey: .openRouterKey)) ?? nil ?? d.openRouterKey
+        let storedModelDefaultsVersion = (try? c.decodeIfPresent(Int.self, forKey: .modelDefaultsVersion)) ?? nil ?? 0
         let storedOpenRouterModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterModel)) ?? nil ?? d.openRouterModel
-        // Move installations that still use the previous shipped default to
-        // Luna, while preserving every explicitly selected/custom model.
-        openRouterModel = storedOpenRouterModel == "google/gemini-2.5-flash-lite"
+        // Move previously shipped or built-in slow prompt selections to the
+        // fast, inexpensive default while preserving custom model IDs.
+        let previousPromptDefaults: Set<String> = [
+            "google/gemini-2.5-flash-lite",
+            "openai/gpt-5.6-luna",
+            "anthropic/claude-sonnet-5",
+        ]
+        openRouterModel = storedModelDefaultsVersion < 1 && previousPromptDefaults.contains(storedOpenRouterModel)
             ? d.openRouterModel
             : storedOpenRouterModel
+        useOpenRouterTranscription = (try? c.decodeIfPresent(Bool.self, forKey: .useOpenRouterTranscription)) ?? nil ?? d.useOpenRouterTranscription
         openRouterTranscriptionModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterTranscriptionModel)) ?? nil ?? d.openRouterTranscriptionModel
         let storedCleanupModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterCleanupModel)) ?? nil ?? d.openRouterCleanupModel
-        // Move installations still using the previous shipped dictation default
-        // to free routing, while preserving every other custom selection.
-        openRouterCleanupModel = storedCleanupModel == "openai/gpt-5.6-luna"
+        // Prefer predictable low latency over the free router, which can be
+        // slower or rate-limited during peak usage.
+        let previousCleanupDefaults: Set<String> = [
+            "openai/gpt-5.6-luna",
+            "openrouter/free",
+        ]
+        openRouterCleanupModel = storedModelDefaultsVersion < 1 && previousCleanupDefaults.contains(storedCleanupModel)
             ? d.openRouterCleanupModel
             : storedCleanupModel
+        modelDefaultsVersion = max(storedModelDefaultsVersion, d.modelDefaultsVersion)
         tapToLockEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .tapToLockEnabled)) ?? nil ?? d.tapToLockEnabled
         onboardingDone = (try? c.decodeIfPresent(Bool.self, forKey: .onboardingDone)) ?? nil ?? d.onboardingDone
         cleanupModel = (try? c.decodeIfPresent(String.self, forKey: .cleanupModel)) ?? nil ?? d.cleanupModel

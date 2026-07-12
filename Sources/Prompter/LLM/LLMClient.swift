@@ -43,12 +43,10 @@ final class LLMClient {
     private var cachedCLIPath: String?
     private var cachedForConfiguredPath: String?
 
-    /// If the chosen model errors or is rate-limited, OpenRouter silently retries
-    /// down this list (verified cheap + good at rewrite-style instruction following).
+    /// Keep fallbacks on the same low-latency, inexpensive rewrite model rather
+    /// than silently jumping to a large reasoning model.
     static let fallbackModels = [
-        "openai/gpt-oss-120b",
-        "qwen/qwen3-30b-a3b-instruct-2507",
-        "meta-llama/llama-3.3-70b-instruct",
+        "google/gemini-3.1-flash-lite",
     ]
 
     /// `model` is the claude CLI model; when OpenRouter is active the configured
@@ -83,10 +81,13 @@ final class LLMClient {
     var backendDescription: String {
         let orKey = ConfigStore.shared.config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !orKey.isEmpty {
+            let config = ConfigStore.shared.config
             let transcription = ConfigStore.shared.config.openRouterTranscriptionModel
-            let cleanup = ConfigStore.shared.config.openRouterCleanupModel
-            let prompt = ConfigStore.shared.config.openRouterModel
-            let transcriptionName = TranscriptionModelCatalog.choice(for: transcription)?.name ?? transcription
+            let cleanup = config.openRouterCleanupModel
+            let prompt = config.openRouterModel
+            let transcriptionName = config.useOpenRouterTranscription
+                ? (TranscriptionModelCatalog.choice(for: transcription)?.name ?? transcription)
+                : "Apple local"
             let cleanupName = AIModelCatalog.choice(for: cleanup)?.name ?? cleanup
             let promptName = AIModelCatalog.choice(for: prompt)?.name ?? prompt
             return "OpenRouter (\(transcriptionName) STT · \(cleanupName) cleanup · \(promptName) prompt)"
@@ -109,7 +110,7 @@ final class LLMClient {
 
         var body: [String: Any] = [
             "model": model,
-            "max_completion_tokens": 8000,
+            "max_completion_tokens": 2500,
             "temperature": temperature,
             "messages": [
                 ["role": "system", "content": system],

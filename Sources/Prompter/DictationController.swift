@@ -246,16 +246,16 @@ final class DictationController {
 
     // MARK: - Transform
 
-    /// Whisper Turbo is the primary engine when OpenRouter is configured. The
-    /// Apple analyzer finalizes in parallel and is ready as an immediate local
-    /// fallback if the network request fails.
+    /// Apple's local analyzer is the fast default. Whisper Turbo is used only
+    /// when the user explicitly enables cloud transcription; Apple continues
+    /// in parallel as its fallback.
     private func transcribe(recordingURL: URL?) async -> (text: String, costUSD: Double, engine: String) {
         async let localTranscript = engine.finish()
         let config = ConfigStore.shared.config
-        let hasOpenRouterKey = !config.openRouterKey
-            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let useCloudTranscription = config.useOpenRouterTranscription
+            && !config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-        if hasOpenRouterKey, let recordingURL {
+        if useCloudTranscription, let recordingURL {
             do {
                 let cloud = try await OpenRouterTranscriber.transcribeFile(
                     recordingURL,

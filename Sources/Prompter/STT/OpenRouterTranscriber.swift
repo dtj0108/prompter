@@ -50,7 +50,7 @@ enum OpenRouterTranscriber {
         _ url: URL,
         model: String,
         language: String = "en",
-        timeout: TimeInterval = 75
+        timeout: TimeInterval = 12
     ) async throws -> CloudTranscriptionResult {
         let key = ConfigStore.shared.config.openRouterKey
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -104,7 +104,7 @@ enum OpenRouterTranscriber {
     /// cannot be reused.
     private static func dataWithTransientRetries(
         for request: URLRequest,
-        maxAttempts: Int = 3
+        maxAttempts: Int = 2
     ) async throws -> (Data, URLResponse) {
         precondition(maxAttempts > 0)
 

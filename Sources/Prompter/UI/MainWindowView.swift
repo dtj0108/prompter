@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import AVFoundation
 
 enum MainTab: String, CaseIterable, Identifiable {
@@ -40,13 +41,17 @@ struct MainWindowView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(MainTab.allCases, selection: Binding(
-                get: { state.tab },
-                set: { state.tab = $0 ?? .home }
-            )) { tab in
-                SidebarRow(tab: tab, selected: state.tab == tab).tag(tab)
+            ScrollView {
+                VStack(spacing: 2) {
+                    ForEach(MainTab.allCases) { tab in
+                        SidebarItem(tab: tab, selected: state.tab == tab) {
+                            state.tab = tab
+                        }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 4)
             }
-            .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 170, ideal: 190)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HStack(spacing: 8) {
@@ -95,25 +100,51 @@ struct MainWindowView: View {
     }
 }
 
-/// Sidebar row with a hover highlight (skipped while selected — the selection
-/// pill already marks that row).
-private struct SidebarRow: View {
+/// Custom sidebar row: full control of hover highlight, selection fill,
+/// and the pointing-hand cursor (List's sidebar style eats all of these).
+private struct SidebarItem: View {
     let tab: MainTab
     let selected: Bool
+    let action: () -> Void
     @State private var hovered = false
+    @State private var cursorPushed = false
 
     var body: some View {
-        Label(tab.label, systemImage: tab.symbol)
-            .padding(.vertical, 1)
-            .contentShape(Rectangle())
-            .onHover { inside in
-                withAnimation(.easeOut(duration: 0.12)) { hovered = inside }
+        HStack(spacing: 9) {
+            Image(systemName: tab.symbol)
+                .frame(width: 20)
+                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+            Text(tab.label)
+                .foregroundStyle(.primary.opacity(selected ? 1 : 0.85))
+            Spacer(minLength: 0)
+        }
+        .font(.body.weight(selected ? .medium : .regular))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(selected
+                      ? Color.primary.opacity(0.11)
+                      : Color.primary.opacity(hovered ? 0.06 : 0))
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 7))
+        .onTapGesture(perform: action)
+        .onHover { inside in
+            withAnimation(.easeOut(duration: 0.12)) { hovered = inside }
+            if inside, !cursorPushed {
+                NSCursor.pointingHand.push()
+                cursorPushed = true
+            } else if !inside, cursorPushed {
+                NSCursor.pop()
+                cursorPushed = false
             }
-            .listRowBackground(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.primary.opacity(hovered && !selected ? 0.07 : 0))
-                    .padding(.horizontal, 4)
-            )
+        }
+        .onDisappear {
+            if cursorPushed {
+                NSCursor.pop()
+                cursorPushed = false
+            }
+        }
     }
 }
 

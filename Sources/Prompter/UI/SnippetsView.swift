@@ -23,24 +23,27 @@ struct SnippetsView: View {
 
             List {
                 ForEach($store.snippets) { $snippet in
-                    HStack(alignment: .top, spacing: 10) {
-                        TextField("Say this… (e.g. my email address)", text: $snippet.trigger)
-                            .font(.body.weight(.medium))
-                            .frame(width: 190)
-                        Image(systemName: "arrow.right")
+                    HoverRow { hovered in
+                        HStack(alignment: .top, spacing: 10) {
+                            TextField("Say this… (e.g. my email address)", text: $snippet.trigger)
+                                .font(.body.weight(.medium))
+                                .frame(width: 190)
+                            Image(systemName: "arrow.right")
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 4)
+                            TextField("…and this gets typed", text: $snippet.expansion, axis: .vertical)
+                                .lineLimit(1...4)
+                            Button {
+                                store.snippets.removeAll { $0.id == snippet.id }
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
                             .foregroundStyle(.secondary)
-                            .padding(.top, 4)
-                        TextField("…and this gets typed", text: $snippet.expansion, axis: .vertical)
-                            .lineLimit(1...4)
-                        Button {
-                            store.snippets.removeAll { $0.id == snippet.id }
-                        } label: {
-                            Image(systemName: "trash")
+                            .opacity(hovered ? 1 : 0)
+                            .help("Delete this snippet")
                         }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.secondary)
                     }
-                    .padding(.vertical, 4)
                 }
             }
             .listStyle(.inset)

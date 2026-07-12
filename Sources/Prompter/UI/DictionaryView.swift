@@ -59,18 +59,21 @@ private struct DictRow: View {
     var onDelete: () -> Void
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            TextField("Word or phrase", text: $entry.phrase)
-                .font(.body.weight(.medium))
-                .frame(minWidth: 140, maxWidth: 180)
-            ListField(placeholder: "Sounds like (comma-separated)", list: $entry.soundsLike)
-            TextField("Note", text: $entry.note)
-                .frame(maxWidth: 130)
-            Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
+        HoverRow { hovered in
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                TextField("Word or phrase", text: $entry.phrase)
+                    .font(.body.weight(.medium))
+                    .frame(minWidth: 140, maxWidth: 180)
+                ListField(placeholder: "Sounds like (comma-separated)", list: $entry.soundsLike)
+                TextField("Note", text: $entry.note)
+                    .frame(maxWidth: 130)
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .opacity(hovered ? 1 : 0)
+                .help("Delete this word")
             }
-            .buttonStyle(.borderless)
         }
-        .padding(.vertical, 3)
     }
 }

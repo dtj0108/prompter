@@ -44,7 +44,7 @@ struct MainWindowView: View {
                 get: { state.tab },
                 set: { state.tab = $0 ?? .home }
             )) { tab in
-                Label(tab.label, systemImage: tab.symbol).tag(tab)
+                SidebarRow(tab: tab, selected: state.tab == tab).tag(tab)
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 170, ideal: 190)
@@ -95,6 +95,28 @@ struct MainWindowView: View {
     }
 }
 
+/// Sidebar row with a hover highlight (skipped while selected — the selection
+/// pill already marks that row).
+private struct SidebarRow: View {
+    let tab: MainTab
+    let selected: Bool
+    @State private var hovered = false
+
+    var body: some View {
+        Label(tab.label, systemImage: tab.symbol)
+            .padding(.vertical, 1)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                withAnimation(.easeOut(duration: 0.12)) { hovered = inside }
+            }
+            .listRowBackground(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.primary.opacity(hovered && !selected ? 0.07 : 0))
+                    .padding(.horizontal, 4)
+            )
+    }
+}
+
 // MARK: - Home
 
 struct HomeView: View {
@@ -115,7 +137,7 @@ struct HomeView: View {
                 }
                 .padding(.top, 8)
 
-                // Hotkey cards
+                // Hotkey cards (click → Settings)
                 HStack(spacing: 12) {
                     hotkeyCard(
                         symbol: "mic.fill",
@@ -133,7 +155,7 @@ struct HomeView: View {
                     )
                 }
 
-                // Today
+                // Today (click → Insights)
                 HStack(spacing: 12) {
                     statCard("Today", "\(insights.todayWords)", "words")
                     statCard("Streak", "\(insights.streakDays)", insights.streakDays == 1 ? "day" : "days")
@@ -200,7 +222,9 @@ struct HomeView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+        .hoverCard()
+        .onTapGesture { MainWindowState.shared.tab = .settings }
+        .help("Change hotkeys in Settings")
     }
 
     private func statCard(_ title: String, _ value: String, _ unit: String) -> some View {
@@ -211,7 +235,9 @@ struct HomeView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+        .hoverCard()
+        .onTapGesture { MainWindowState.shared.tab = .insights }
+        .help("See full Insights")
     }
 
     private func statusRow(ok: Bool, text: String) -> some View {

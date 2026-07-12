@@ -96,6 +96,7 @@ private struct ContextEditor: View {
         Button(label) { ctx.instructions = text }
             .buttonStyle(.bordered)
             .controlSize(.small)
+            .help("Replace the tone instructions with the \(label) preset")
     }
 }
 

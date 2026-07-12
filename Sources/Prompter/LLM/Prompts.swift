@@ -147,33 +147,36 @@ enum Prompts {
             return """
             <assistance_level>
             The user chose LIGHT help for this dictation. This overrides every earlier instruction that \
-            adds material: do NOT add headings, sections, execution steps, repository-inspection or \
-            verification requirements, safeguards, finish lines, or any agent guidance the user did not \
-            say. Your whole job is to clean the transcript into a well-written prompt: fix wording and \
-            punctuation, remove filler, resolve self-corrections, and keep the user's own words, order, \
-            tone, and length as much as possible. The result should read like the user typed their own \
-            request carefully — nothing more.
+            adds material, but it does not override the required output template. Fill every required \
+            section concisely without adding execution steps, repository-inspection requirements, \
+            safeguards, finish lines, or agent guidance the user did not say. Your whole job is to clean \
+            the transcript into a well-written prompt: fix wording and punctuation, remove filler, resolve \
+            self-corrections, and keep the user's own words, order, tone, and length as much as possible. \
+            Use “Not specified.” where the template requires a placeholder. The result should read like \
+            the user carefully organized their own request — nothing more.
             </assistance_level>
             """
         case .medium:
             return """
             <assistance_level>
             The user chose MEDIUM help for this dictation. Sharpen and organize what they said: a clear \
-            opening verb, precise wording, and light structure only when it genuinely helps. You may add \
-            at most one brief, generic execution note (such as inspecting the relevant code first, or \
-            verifying the change) when clearly useful — skip the base prompt's fuller coding contract. \
-            Do NOT add requirements, features, constraints, acceptance criteria, examples, or specifics \
-            the user did not say. When unsure whether the user would want an addition, leave it out.
+            opening verb and precise wording within the required output template. You may add at most one \
+            brief, generic execution note (such as inspecting the relevant code first, or verifying the \
+            change) when clearly useful — skip the base prompt's fuller coding contract. Do NOT add \
+            requirements, features, constraints, acceptance criteria, examples, or specifics the user did \
+            not say. Use “Not specified.” where the template requires a placeholder. When unsure whether \
+            the user would want an addition, leave it out.
             </assistance_level>
             """
         case .heavy:
             return """
             <assistance_level>
             The user chose HEAVY help for this dictation. Fully engineer the prompt: strong structure, \
-            explicit requirements derived from what was said, and thorough execution and verification \
-            guidance for the agent. You may fill small gaps with reasonable assumptions, but mark each \
-            one clearly inside the prompt (for example a line starting with "Assume:") so the user can \
-            spot and remove it. Even here, never present invented specifics as if the user said them.
+            using the required output template, explicit requirements derived from what was said, and \
+            thorough execution and verification guidance for the agent. You may fill small gaps with \
+            reasonable assumptions, but mark each one clearly inside the prompt (for example a line \
+            starting with "Assume:") so the user can spot and remove it. Even here, never present invented \
+            specifics as if the user said them.
             </assistance_level>
             """
         }
@@ -240,6 +243,53 @@ enum Prompts {
     entire response must be usable as the next instruction to a coding agent.
     </output_contract>
 
+    <required_output_template>
+    Every response must use these Markdown headings in this exact order. Replace the parenthetical guidance \
+    with the prompt's actual content; do not echo the guidance itself. Keep every section concise. Use \
+    “Not specified.” for an unspecified output format, structure, tone, or length. Omit **Conflict resolution** \
+    when there is no applicable conflict. Do not omit any other section.
+
+    **Title**
+    (1 concise line)
+
+    **Role & stance**
+    (who the model is and how it should behave)
+
+    **Task**
+    (what the model must do)
+
+    **Context**
+    (only what the model needs to know)
+
+    **Inputs available**
+    (explicit list)
+
+    **Output requirements**
+    (format, structure, tone, length — only if specified; otherwise placeholders)
+
+    **Constraints / Do-nots**
+    (bulleted)
+
+    **Examples / References**
+    (include all examples verbatim)
+
+    **Execution checklist**
+    (short, factual verification list)
+
+    **Conflict resolution**
+    (only if applicable)
+
+    Preserve all user-provided examples and references verbatim inside **Examples / References**. Never invent \
+    an example or reference. If none were supplied, write “None provided.” Under **Inputs available**, give an \
+    explicit bullet list of the information, files, links, logs, code, assets, or other materials actually \
+    supplied or known to be available; write “None provided.” when there are none. Under **Output requirements**, \
+    always include separate Format, Structure, Tone, and Length lines, using “Not specified.” for each value \
+    the user did not specify. Use bullets under **Constraints / Do-nots** and checkbox bullets under \
+    **Execution checklist**. Under **Role & stance**, identify the task-appropriate role and how it should \
+    behave using only the requested scope and constraints; if no specialized role was supplied, use a \
+    concise generic coding-agent role rather than “Not specified.”
+    </required_output_template>
+
     <priorities>
     Apply these priorities in order:
     1. Preserve the user's final intent and exact scope.
@@ -293,10 +343,9 @@ enum Prompts {
     </coding_agent_optimization>
 
     <structure_and_scale>
-    - Scale structure to complexity. Keep a simple task to a compact paragraph without headings or boilerplate.
-    - For multi-part work, use short Markdown sections only when they improve execution. Prefer, when \
-    useful: objective, context, requirements, constraints, and verification.
-    - Convert scattered requirements into concise bullets. Use numbered steps only when order matters.
+    - Always use the required output template. Scale the amount of content inside each section to complexity; \
+    a simple task should still be brief and free of boilerplate.
+    - Convert scattered requirements into concise bullets when useful. Use numbered steps only when order matters.
     - Preserve user-supplied code, logs, errors, schemas, and examples exactly; delimit them clearly from \
     instructions. Never manufacture examples.
     - Give the agent a concrete finish line derived from the request without creating new requirements.
@@ -315,6 +364,9 @@ enum Prompts {
         "132003d1970fcc9b0893d1a59dd422fbfc0bb40c4051acde74ad9a8e1ad9686c", // general-purpose
         "21d92da644cdb5e941431d6ebb29355e495c59998a87737b73e864ce6a66f563", // initial coding prompt
         "f93c0c9d424c4985100c545ae1d16852c94980506a072ddfbc0fbe0d7601d78e", // coding prompt before transcript attachment
+        "e92c694f47087d36c9dd2ac742b64d86bd20120e98d094f906684d2b10186cbe", // coding prompt before required output template
+        "502f53ff7fb89d7442e1fe74897c6e291768d48af7e617b50034973915b54564", // development template before strict output placeholders
+        "db39fa0b5a9f6e4b65ab8766dd37c5a003274af7f637939d0f059318ae4645d7", // development template before default role guidance
     ]
 
     private static func isOutdatedShippedDefaultPrompt(_ prompt: String) -> Bool {

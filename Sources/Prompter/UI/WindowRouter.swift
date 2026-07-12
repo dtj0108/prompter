@@ -35,36 +35,21 @@ final class WindowRouter: NSObject, NSWindowDelegate {
         windows.removeValue(forKey: id)
     }
 
-    func openDictionary() {
-        open(key: "dictionary", title: "Dictionary", size: NSSize(width: 620, height: 480)) {
-            DictionaryView().environmentObject(DictionaryStore.shared)
+    /// The Flow-style main window: sidebar with Home/Insights/Dictionary/Snippets/Style/Settings.
+    func openMain(tab: MainTab = .home) {
+        MainWindowState.shared.tab = tab
+        open(key: "main", title: "Prompter", size: NSSize(width: 960, height: 640)) {
+            MainWindowView()
         }
     }
 
-    func openStyle() {
-        open(key: "style", title: "Style", size: NSSize(width: 640, height: 640)) {
-            StyleView().environmentObject(StyleStore.shared)
-        }
-    }
+    func openDictionary() { openMain(tab: .dictionary) }
+    func openStyle() { openMain(tab: .style) }
+    func openInsights() { openMain(tab: .insights) }
+    func openSettings() { openMain(tab: .settings) }
+    func openSnippetsTab() { openMain(tab: .snippets) }
 
-    func openInsights() {
-        InsightsStore.shared.reload()
-        open(key: "insights", title: "Insights", size: NSSize(width: 680, height: 620)) {
-            InsightsView().environmentObject(InsightsStore.shared)
-        }
-    }
-
-    func openSettings() {
-        open(key: "settings", title: "Settings", size: NSSize(width: 560, height: 620)) {
-            SettingsView().environmentObject(ConfigStore.shared)
-        }
-    }
-
-    func openSnippets() {
-        open(key: "snippets", title: "Snippets", size: NSSize(width: 620, height: 440)) {
-            SnippetsView().environmentObject(SnippetStore.shared)
-        }
-    }
+    func openSnippets() { openMain(tab: .snippets) }
 
     func openOnboarding() {
         open(key: "onboarding", title: "Welcome to Prompter", size: NSSize(width: 560, height: 540)) {

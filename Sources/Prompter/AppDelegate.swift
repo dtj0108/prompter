@@ -21,6 +21,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Double-clicking Prompter in Applications while it's already running lands here:
+    /// open the main window (or the setup assistant if it was never finished).
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if ConfigStore.shared.config.onboardingDone {
+            WindowRouter.shared.openMain()
+        } else {
+            WindowRouter.shared.openOnboarding()
+        }
+        return true
+    }
+
     /// Accessory (menu-bar-only) apps have no main menu, so ⌘V/⌘C/⌘X/⌘A have
     /// nothing to route through and silently do nothing in our windows — you
     /// couldn't even paste an API key. A hidden Edit menu fixes all of them.
@@ -70,6 +81,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
+        menu.addItem(makeItem("Open Prompter…", #selector(openMainWindow), "o"))
+
+        menu.addItem(.separator())
+
         menu.addItem(makeItem("Dictionary…", #selector(openDictionary), "d"))
         menu.addItem(makeItem("Snippets…", #selector(openSnippets), "s"))
         menu.addItem(makeItem("Style…", #selector(openStyle), "t"))
@@ -116,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc private func openMainWindow() { WindowRouter.shared.openMain() }
     @objc private func openDictionary() { WindowRouter.shared.openDictionary() }
     @objc private func openSnippets() { WindowRouter.shared.openSnippets() }
     @objc private func openStyle() { WindowRouter.shared.openStyle() }

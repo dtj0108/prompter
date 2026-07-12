@@ -43,6 +43,7 @@ struct OnboardingView: View {
                     Button("Finish") {
                         store.config.onboardingDone = true
                         WindowRouter.shared.closeOnboarding()
+                        WindowRouter.shared.openMain()
                     }
                     .keyboardShortcut(.defaultAction)
                 }

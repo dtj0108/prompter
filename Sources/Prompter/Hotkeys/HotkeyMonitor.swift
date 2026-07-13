@@ -45,10 +45,10 @@ enum HotkeyKey: String, CaseIterable, Identifiable {
     }
 }
 
-/// Hold-to-talk (hold key, talk, release) and hands-free (tap key, talk as long as
-/// you want, tap again to finish) on a right-side modifier key.
-/// Passive (never swallows events): holding the key alone does nothing system-wide,
-/// and if the user presses any other key mid-hold we abort so normal shortcuts pass through.
+/// Hold-to-talk (hold, talk, release) and hands-free (tap, talk, tap again) for
+/// both the built-in right-side modifier choices and user-recorded shortcuts.
+/// Event monitors remain passive: modifier/function shortcuts are recommended so
+/// Prompter never steals ordinary typing or existing system shortcuts.
 final class HotkeyMonitor {
     /// (mode, handsFree)
     var onBegin: ((DictationMode, Bool) -> Void)?
@@ -57,10 +57,10 @@ final class HotkeyMonitor {
 
     private enum State {
         case idle
-        case pending(mode: DictationMode, keyCode: UInt16)
-        case active(mode: DictationMode, keyCode: UInt16)
+        case pending(mode: DictationMode, shortcut: HotkeyShortcut)
+        case active(mode: DictationMode, shortcut: HotkeyShortcut)
         /// Hands-free: recording continues after the tap; next tap of the same key commits.
-        case latched(mode: DictationMode, keyCode: UInt16)
+        case latched(mode: DictationMode, shortcut: HotkeyShortcut)
     }
 
     private var state: State = .idle
@@ -75,14 +75,22 @@ final class HotkeyMonitor {
         let keyHandler: (NSEvent) -> Void = { [weak self] event in
             self?.handleKeyDown(event)
         }
+        let keyUpHandler: (NSEvent) -> Void = { [weak self] event in
+            self?.handleKeyUp(event)
+        }
         if let m = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, handler: flagsHandler) { monitors.append(m) }
         if let m = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: keyHandler) { monitors.append(m) }
+        if let m = NSEvent.addGlobalMonitorForEvents(matching: .keyUp, handler: keyUpHandler) { monitors.append(m) }
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
             flagsHandler(event)
             return event
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             keyHandler(event)
+            return event
+        } as Any)
+        monitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyUp) { event in
+            keyUpHandler(event)
             return event
         } as Any)
     }
@@ -94,11 +102,27 @@ final class HotkeyMonitor {
         state = .idle
     }
 
-    private var dictationKey: HotkeyKey {
-        HotkeyKey(rawValue: ConfigStore.shared.config.dictationHotkey) ?? .rightOption
+    /// Drop an in-progress key gesture without unregistering the event monitors.
+    /// Used while a shortcut-recorder UI has keyboard focus.
+    func resetState() {
+        holdTimer?.cancel()
+        state = .idle
     }
-    private var promptKey: HotkeyKey {
-        HotkeyKey(rawValue: ConfigStore.shared.config.promptHotkey) ?? .rightCommand
+
+    private var dictationShortcut: HotkeyShortcut {
+        HotkeyShortcut(storedValue: ConfigStore.shared.config.dictationHotkey)
+            ?? HotkeyShortcut(preset: .rightOption)
+    }
+    private var promptShortcut: HotkeyShortcut {
+        HotkeyShortcut(storedValue: ConfigStore.shared.config.promptHotkey)
+            ?? HotkeyShortcut(preset: .rightCommand)
+    }
+
+    private var candidates: [(HotkeyShortcut, DictationMode)] {
+        [
+            (dictationShortcut, .dictate),
+            (promptShortcut, .prompt),
+        ]
     }
 
     private func handleFlagsChanged(_ event: NSEvent) {
@@ -107,46 +131,50 @@ final class HotkeyMonitor {
 
         switch state {
         case .idle:
-            let candidates: [(HotkeyKey, DictationMode)] = [
-                (dictationKey, .dictate),
-                (promptKey, .prompt),
-            ]
-            for (key, mode) in candidates where code == key.keyCode {
+            for (shortcut, mode) in candidates where shortcut.isModifierOnly && code == shortcut.keyCode {
                 // Key must be going DOWN (its flag now present) and be the only modifier
                 // held. Caps Lock doesn't count — it sits in the flags of every event
                 // while engaged and would otherwise silently disable the hotkeys.
-                guard flags.contains(key.flag),
-                      flags.subtracting([key.flag, .capsLock]).isEmpty else { return }
-                beginPending(mode: mode, keyCode: code)
+                guard shortcut.modifierIsDown(in: event),
+                      flags.intersection(HotkeyShortcut.relevantModifiers) == shortcut.modifiers else { return }
+                beginPending(mode: mode, shortcut: shortcut)
                 return
             }
 
-        case .pending(let mode, let keyCode):
+        case .pending(let mode, let shortcut):
+            if !shortcut.isModifierOnly {
+                if !shortcut.requiredModifiersAreDown(in: event) {
+                    completeTap(mode: mode, shortcut: shortcut)
+                }
+                return
+            }
+
             // The same key can't be pressed twice, so a same-key event before the hold
             // threshold is its release — a TAP. A different key means a shortcut chord.
             holdTimer?.cancel()
-            if code == keyCode, ConfigStore.shared.config.tapToLockEnabled {
-                state = .latched(mode: mode, keyCode: keyCode)
-                onBegin?(mode, true)
+            if code == shortcut.keyCode, !shortcut.modifierIsDown(in: event) {
+                completeTap(mode: mode, shortcut: shortcut)
             } else {
                 state = .idle
             }
 
-        case .active(_, let keyCode):
+        case .active(_, let shortcut):
             // A second event for the held key is necessarily its release. Judging by
             // keyCode (not aggregate flags) keeps this correct when the same-named
             // modifier on the other side of the keyboard is also down.
-            if code == keyCode {
+            let released = shortcut.isModifierOnly
+                ? code == shortcut.keyCode && !shortcut.modifierIsDown(in: event)
+                : !shortcut.requiredModifiersAreDown(in: event)
+            if released {
                 state = .idle
                 onCommit?()
             }
 
-        case .latched(_, let keyCode):
+        case .latched(_, let shortcut):
             // Next PRESS of the same key (flag present) finishes the hands-free session.
             // Its paired release event arrives in .idle with the flag absent and is
             // ignored by the idle guard there.
-            if code == keyCode, let key = HotkeyKey.allCases.first(where: { $0.keyCode == code }),
-               flags.contains(key.flag) {
+            if shortcut.isModifierOnly, code == shortcut.keyCode, shortcut.modifierIsDown(in: event) {
                 state = .idle
                 onCommit?()
             }
@@ -156,12 +184,25 @@ final class HotkeyMonitor {
     private func handleKeyDown(_ event: NSEvent) {
         switch state {
         case .idle:
+            guard !event.isARepeat else { return }
+            for (shortcut, mode) in candidates where shortcut.matchesKeyDown(event) {
+                beginPending(mode: mode, shortcut: shortcut)
+                return
+            }
             return
-        case .pending:
+
+        case .pending(_, let shortcut):
+            if !shortcut.isModifierOnly,
+               event.keyCode == shortcut.keyCode,
+               event.isARepeat { return }
             // Any real key while the modifier is held = a normal shortcut. Stand down.
             holdTimer?.cancel()
             state = .idle
-        case .active:
+
+        case .active(_, let shortcut):
+            if !shortcut.isModifierOnly,
+               event.keyCode == shortcut.keyCode,
+               event.isARepeat { return }
             if event.keyCode == 53 { // Esc cancels
                 state = .idle
                 onAbort?()
@@ -171,7 +212,12 @@ final class HotkeyMonitor {
                 onAbort?()
             }
 
-        case .latched:
+        case .latched(_, let shortcut):
+            if !shortcut.isModifierOnly, !event.isARepeat, shortcut.matchesKeyDown(event) {
+                state = .idle
+                onCommit?()
+                return
+            }
             // Hands-free survives typing and clicking around — only Esc cancels.
             if event.keyCode == 53 {
                 state = .idle
@@ -180,14 +226,40 @@ final class HotkeyMonitor {
         }
     }
 
-    private func beginPending(mode: DictationMode, keyCode: UInt16) {
+    private func handleKeyUp(_ event: NSEvent) {
+        switch state {
+        case .pending(let mode, let shortcut):
+            guard !shortcut.isModifierOnly, event.keyCode == shortcut.keyCode else { return }
+            completeTap(mode: mode, shortcut: shortcut)
+
+        case .active(_, let shortcut):
+            guard !shortcut.isModifierOnly, event.keyCode == shortcut.keyCode else { return }
+            state = .idle
+            onCommit?()
+
+        case .idle, .latched:
+            return
+        }
+    }
+
+    private func completeTap(mode: DictationMode, shortcut: HotkeyShortcut) {
         holdTimer?.cancel()
-        state = .pending(mode: mode, keyCode: keyCode)
+        if ConfigStore.shared.config.tapToLockEnabled {
+            state = .latched(mode: mode, shortcut: shortcut)
+            onBegin?(mode, true)
+        } else {
+            state = .idle
+        }
+    }
+
+    private func beginPending(mode: DictationMode, shortcut: HotkeyShortcut) {
+        holdTimer?.cancel()
+        state = .pending(mode: mode, shortcut: shortcut)
         let threshold = Double(ConfigStore.shared.config.holdThresholdMs) / 1000.0
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            if case .pending(let mode, let keyCode) = self.state {
-                self.state = .active(mode: mode, keyCode: keyCode)
+            if case .pending(let mode, let shortcut) = self.state {
+                self.state = .active(mode: mode, shortcut: shortcut)
                 self.onBegin?(mode, false)
             }
         }

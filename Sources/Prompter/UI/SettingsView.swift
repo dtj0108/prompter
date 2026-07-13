@@ -10,25 +10,18 @@ struct SettingsView: View {
     @State private var inputMonStatus = CGPreflightListenEventAccess()
     @State private var testResult = ""
     @State private var testing = false
+    @State private var hotkeyCaptureTarget: HotkeyCaptureTarget?
 
     var body: some View {
         VStack(spacing: 0) {
             Form {
             Section("Hotkeys") {
-                Picker("Dictation", selection: $store.config.dictationHotkey) {
-                    ForEach(HotkeyKey.allCases) { key in
-                        Text(key.display).tag(key.rawValue)
-                    }
-                }
-                Picker("Prompt Mode", selection: $store.config.promptHotkey) {
-                    ForEach(HotkeyKey.allCases) { key in
-                        Text(key.display).tag(key.rawValue)
-                    }
-                }
+                hotkeyMenuRow("Dictation", selection: $store.config.dictationHotkey, target: .dictation)
+                hotkeyMenuRow("Prompt Mode", selection: $store.config.promptHotkey, target: .prompt)
                 Toggle("Tap for hands-free (tap again to finish)", isOn: $store.config.tapToLockEnabled)
-                Text("Hold = push-to-talk: hold the key, speak, release to insert. Tap = hands-free: tap once, talk as long as you want, tap again when done. Esc cancels. Changes apply immediately.")
+                Text("Choose one of the quick options or click Custom… and press any key or key combination. Hold = push-to-talk; tap = hands-free. Esc cancels. Changes apply immediately.")
                     .font(.caption).foregroundStyle(.secondary)
-                if store.config.dictationHotkey == store.config.promptHotkey {
+                if HotkeyShortcut.matches(store.config.dictationHotkey, store.config.promptHotkey) {
                     Text("⚠️ Both modes are on the same key — Prompt Mode will never trigger.")
                         .font(.caption).foregroundStyle(.orange)
                 }
@@ -213,6 +206,47 @@ struct SettingsView: View {
             case .available, .downloading: break
             default: updater.checkForUpdates()
             }
+        }
+        .sheet(item: $hotkeyCaptureTarget) { target in
+            HotkeyRecorderSheet(target: target) { shortcut in
+                switch target {
+                case .dictation:
+                    store.config.dictationHotkey = shortcut.storedValue
+                case .prompt:
+                    store.config.promptHotkey = shortcut.storedValue
+                }
+            }
+        }
+    }
+
+    private func hotkeyMenuRow(
+        _ title: String,
+        selection: Binding<String>,
+        target: HotkeyCaptureTarget
+    ) -> some View {
+        LabeledContent(title) {
+            Menu {
+                ForEach(HotkeyKey.allCases) { key in
+                    Button {
+                        selection.wrappedValue = key.rawValue
+                    } label: {
+                        if selection.wrappedValue == key.rawValue {
+                            Label(key.display, systemImage: "checkmark")
+                        } else {
+                            Text(key.display)
+                        }
+                    }
+                }
+                Divider()
+                Button("Custom…") { hotkeyCaptureTarget = target }
+            } label: {
+                Text(HotkeyShortcut.display(
+                    for: selection.wrappedValue,
+                    fallback: target == .dictation ? .rightOption : .rightCommand
+                ))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
         }
     }
 

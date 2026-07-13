@@ -19,6 +19,7 @@ struct OnboardingView: View {
     @State private var practiceText = ""
 
     @State private var keyMonitor: Any?
+    @State private var hotkeyCaptureTarget: HotkeyCaptureTarget?
 
     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
     private let stepCount = 7
@@ -66,6 +67,18 @@ struct OnboardingView: View {
         .onAppear { updateKeyCapture(for: step) }
         .onChange(of: step) { _, newStep in updateKeyCapture(for: newStep) }
         .onDisappear { updateKeyCapture(for: -1) }
+        .sheet(item: $hotkeyCaptureTarget, onDismiss: {
+            updateKeyCapture(for: step)
+        }) { target in
+            HotkeyRecorderSheet(target: target) { shortcut in
+                switch target {
+                case .dictation:
+                    store.config.dictationHotkey = shortcut.storedValue
+                case .prompt:
+                    store.config.promptHotkey = shortcut.storedValue
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -187,7 +200,8 @@ struct OnboardingView: View {
             blurb: "This one types your exact words — what you said, as-is, just cleaned up.",
             recommended: .rightOption,
             selection: $store.config.dictationHotkey,
-            conflictWith: nil
+            conflictWith: nil,
+            target: .dictation
         )
     }
 
@@ -198,15 +212,24 @@ struct OnboardingView: View {
             blurb: "This one doesn't just type what you said — it uses it to write a well-made prompt for an AI.",
             recommended: .rightCommand,
             selection: $store.config.promptHotkey,
-            conflictWith: store.config.dictationHotkey
+            conflictWith: store.config.dictationHotkey,
+            target: .prompt
         )
     }
 
-    private func hotkeyChoiceStep(emoji: String, question: String, blurb: String, recommended: HotkeyKey, selection: Binding<String>, conflictWith: String?) -> some View {
+    private func hotkeyChoiceStep(
+        emoji: String,
+        question: String,
+        blurb: String,
+        recommended: HotkeyKey,
+        selection: Binding<String>,
+        conflictWith: String?,
+        target: HotkeyCaptureTarget
+    ) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             header(emoji, question, blurb)
 
-            Text("Press the key on your keyboard right now — or click one below — then hit Continue.")
+            Text("Choose a quick option below, or click Custom and press the shortcut you want. Then hit Continue.")
                 .font(.callout)
 
             VStack(spacing: 8) {
@@ -217,9 +240,16 @@ struct OnboardingView: View {
                         selection.wrappedValue = key.rawValue
                     }
                 }
+                customKeyRow(
+                    selected: HotkeyKey(rawValue: selection.wrappedValue) == nil,
+                    currentValue: selection.wrappedValue,
+                    fallback: recommended
+                ) {
+                    hotkeyCaptureTarget = target
+                }
             }
 
-            if let conflictWith, selection.wrappedValue == conflictWith {
+            if let conflictWith, HotkeyShortcut.matches(selection.wrappedValue, conflictWith) {
                 Text("⚠️ That key is already doing dictation — pick a different one so both can work.")
                     .font(.callout).foregroundStyle(.orange)
             } else if selection.wrappedValue == HotkeyKey.fn.rawValue {
@@ -242,6 +272,39 @@ struct OnboardingView: View {
                     .foregroundStyle(Color.accentColor)
             }
             Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(Color.secondary.opacity(selected ? 0.12 : 0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(selected ? Color.accentColor.opacity(0.7) : Color.clear, lineWidth: 1.5)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 9))
+        .onTapGesture(perform: action)
+    }
+
+    private func customKeyRow(
+        selected: Bool,
+        currentValue: String,
+        fallback: HotkeyKey,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+            Text("Custom").font(.headline)
+            if selected {
+                Text(HotkeyShortcut.display(for: currentValue, fallback: fallback))
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            Spacer()
+            Image(systemName: "keyboard")
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -337,10 +400,10 @@ struct OnboardingView: View {
     // MARK: Helpers
 
     private var dictationKeyName: String {
-        HotkeyKey(rawValue: store.config.dictationHotkey)?.shortDisplay ?? "Right ⌥"
+        HotkeyShortcut.display(for: store.config.dictationHotkey, fallback: .rightOption, shortened: true)
     }
     private var promptKeyName: String {
-        HotkeyKey(rawValue: store.config.promptHotkey)?.shortDisplay ?? "Right ⌘"
+        HotkeyShortcut.display(for: store.config.promptHotkey, fallback: .rightCommand, shortened: true)
     }
 
     private func header(_ emoji: String, _ title: String, _ subtitle: String) -> some View {

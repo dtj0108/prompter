@@ -231,10 +231,10 @@ struct HomeView: View {
     }
 
     private var dictationKeyName: String {
-        HotkeyKey(rawValue: config.config.dictationHotkey)?.shortDisplay ?? "Right ⌥"
+        HotkeyShortcut.display(for: config.config.dictationHotkey, fallback: .rightOption, shortened: true)
     }
     private var promptKeyName: String {
-        HotkeyKey(rawValue: config.config.promptHotkey)?.shortDisplay ?? "Right ⌘"
+        HotkeyShortcut.display(for: config.config.promptHotkey, fallback: .rightCommand, shortened: true)
     }
 
     private func hotkeyCard(symbol: String, tint: Color, title: String, key: String, detail: String) -> some View {

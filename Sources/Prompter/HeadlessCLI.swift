@@ -100,6 +100,14 @@ enum HeadlessCLI {
             }
             return true
 
+        case "--test-hotkeys":
+            if HotkeyMonitor.verifyAuxiliaryMouseButtonHandling() {
+                print("PASS: middle-click and auxiliary mouse-button hotkeys")
+            } else {
+                FileHandle.standardError.write(Data("FAIL: mouse-button hotkey verification\n".utf8))
+            }
+            return true
+
         case "--render-onboarding":
             guard args.count >= 3 else {
                 FileHandle.standardError.write(Data("usage: Prompter --render-onboarding <png-path> [step]\n".utf8))
@@ -176,6 +184,36 @@ enum HeadlessCLI {
                 host.layoutSubtreeIfNeeded()
                 guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
                     FileHandle.standardError.write(Data("failed to render main window\n".utf8))
+                    return
+                }
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
+                do {
+                    try png.write(to: URL(fileURLWithPath: args[2]), options: .atomic)
+                    print(args[2])
+                } catch {
+                    FileHandle.standardError.write(Data("render failed: \(error)\n".utf8))
+                }
+            }
+            return true
+
+        case "--render-settings":
+            guard args.count >= 3 else {
+                FileHandle.standardError.write(Data("usage: Prompter --render-settings <png-path>\n".utf8))
+                return true
+            }
+            MainActor.assumeIsolated {
+                _ = NSApplication.shared
+                let content = SettingsView()
+                    .environmentObject(ConfigStore.shared)
+                    .frame(width: 880, height: 760)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                let host = NSHostingView(rootView: content)
+                host.frame = NSRect(x: 0, y: 0, width: 880, height: 760)
+                host.appearance = NSAppearance(named: .aqua)
+                host.layoutSubtreeIfNeeded()
+                guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+                    FileHandle.standardError.write(Data("failed to render Settings view\n".utf8))
                     return
                 }
                 host.cacheDisplay(in: host.bounds, to: bitmap)

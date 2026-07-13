@@ -2,22 +2,28 @@ import AppKit
 
 /// A saved hotkey. The original four choices keep their stable string values;
 /// custom shortcuts are encoded into the same config fields as
-/// `custom:<keyCode>:<modifierFlags>:<modifierOnly>` so existing installs need
-/// no migration and old versions still fall back safely.
+/// `custom:<keyCode>:<modifierFlags>:<modifierOnly>`. Mouse shortcuts use
+/// `mouse:<buttonNumber>`, where AppKit numbers middle-click as 2. Existing
+/// installs need no migration and old versions still fall back safely.
 struct HotkeyShortcut: Equatable {
     private static let customPrefix = "custom"
+    private static let mousePrefix = "mouse"
     static let relevantModifiers: NSEvent.ModifierFlags = [.control, .option, .shift, .command, .function]
 
     let keyCode: UInt16
     let modifiers: NSEvent.ModifierFlags
     let isModifierOnly: Bool
     let preset: HotkeyKey?
+    let mouseButtonNumber: Int?
+
+    var isMouseButton: Bool { mouseButtonNumber != nil }
 
     init(preset: HotkeyKey) {
         keyCode = preset.keyCode
         modifiers = preset.flag
         isModifierOnly = true
         self.preset = preset
+        mouseButtonNumber = nil
     }
 
     init(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, isModifierOnly: Bool = false) {
@@ -25,6 +31,16 @@ struct HotkeyShortcut: Equatable {
         self.modifiers = modifiers.intersection(Self.relevantModifiers)
         self.isModifierOnly = isModifierOnly
         preset = nil
+        mouseButtonNumber = nil
+    }
+
+    init(mouseButtonNumber: Int) {
+        precondition(mouseButtonNumber >= 2, "Primary and secondary click cannot be Prompter hotkeys")
+        keyCode = 0
+        modifiers = []
+        isModifierOnly = false
+        preset = nil
+        self.mouseButtonNumber = mouseButtonNumber
     }
 
     init?(storedValue: String) {
@@ -34,6 +50,14 @@ struct HotkeyShortcut: Equatable {
         }
 
         let pieces = storedValue.split(separator: ":", omittingEmptySubsequences: false)
+        if pieces.count == 2,
+           pieces[0] == Self.mousePrefix,
+           let buttonNumber = Int(pieces[1]),
+           buttonNumber >= 2 {
+            self.init(mouseButtonNumber: buttonNumber)
+            return
+        }
+
         guard pieces.count == 4,
               pieces[0] == Self.customPrefix,
               let keyCode = UInt16(pieces[1]),
@@ -48,6 +72,7 @@ struct HotkeyShortcut: Equatable {
     }
 
     var storedValue: String {
+        if let mouseButtonNumber { return "\(Self.mousePrefix):\(mouseButtonNumber)" }
         if let preset { return preset.rawValue }
         if isModifierOnly,
            let matchingPreset = HotkeyKey.allCases.first(where: {
@@ -59,12 +84,14 @@ struct HotkeyShortcut: Equatable {
     }
 
     var display: String {
+        if let mouseButtonNumber { return Self.mouseButtonName(mouseButtonNumber) }
         if let preset { return preset.display }
         if isModifierOnly { return Self.modifierKeyName(for: keyCode, shortened: false) }
         return Self.modifierSymbols(modifiers) + Self.keyName(for: keyCode)
     }
 
     var shortDisplay: String {
+        if let mouseButtonNumber { return Self.mouseButtonName(mouseButtonNumber) }
         if let preset { return preset.shortDisplay }
         if isModifierOnly { return Self.modifierKeyName(for: keyCode, shortened: true) }
         return Self.modifierSymbols(modifiers) + Self.keyName(for: keyCode)
@@ -82,9 +109,14 @@ struct HotkeyShortcut: Equatable {
     }
 
     func matchesKeyDown(_ event: NSEvent) -> Bool {
-        guard !isModifierOnly, event.keyCode == keyCode else { return false }
+        guard !isMouseButton, !isModifierOnly, event.keyCode == keyCode else { return false }
         let eventModifiers = event.modifierFlags.intersection(Self.relevantModifiers)
         return eventModifiers == modifiers
+    }
+
+    func matchesMouseButton(_ event: NSEvent) -> Bool {
+        guard let mouseButtonNumber else { return false }
+        return event.buttonNumber == mouseButtonNumber
     }
 
     func modifierIsDown(in event: NSEvent) -> Bool {
@@ -115,6 +147,13 @@ struct HotkeyShortcut: Equatable {
         if flags.contains(.command) { result += "⌘" }
         if flags.contains(.function) { result += "fn " }
         return result
+    }
+
+    private static func mouseButtonName(_ buttonNumber: Int) -> String {
+        if buttonNumber == 2 { return "Middle Click" }
+        // AppKit is zero-based; mouse vendors label the same physical buttons
+        // starting at one (for example AppKit 3 is commonly “Mouse Button 4”).
+        return "Mouse Button \(buttonNumber + 1)"
     }
 
     private static func modifierKeyName(for keyCode: UInt16, shortened: Bool) -> String {

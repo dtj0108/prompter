@@ -19,10 +19,10 @@ struct SettingsView: View {
                 hotkeyMenuRow("Dictation", selection: $store.config.dictationHotkey, target: .dictation)
                 hotkeyMenuRow("Prompt Mode", selection: $store.config.promptHotkey, target: .prompt)
                 Toggle("Tap for hands-free (tap again to finish)", isOn: $store.config.tapToLockEnabled)
-                Text("Choose one of the quick options or click Custom… and press any key or key combination. Hold = push-to-talk; tap = hands-free. Esc cancels. Changes apply immediately.")
+                Text("Choose a quick option or click Custom… and press a key, key combination, middle-click, or extra mouse button. Hold = push-to-talk; tap = hands-free. Esc cancels. Changes apply immediately.")
                     .font(.caption).foregroundStyle(.secondary)
                 if HotkeyShortcut.matches(store.config.dictationHotkey, store.config.promptHotkey) {
-                    Text("⚠️ Both modes are on the same key — Prompt Mode will never trigger.")
+                    Text("⚠️ Both modes use the same shortcut — Prompt Mode will never trigger.")
                         .font(.caption).foregroundStyle(.orange)
                 }
                 if store.config.dictationHotkey == HotkeyKey.fn.rawValue || store.config.promptHotkey == HotkeyKey.fn.rawValue {
@@ -225,28 +225,29 @@ struct SettingsView: View {
         target: HotkeyCaptureTarget
     ) -> some View {
         LabeledContent(title) {
-            Menu {
-                ForEach(HotkeyKey.allCases) { key in
-                    Button {
-                        selection.wrappedValue = key.rawValue
-                    } label: {
-                        if selection.wrappedValue == key.rawValue {
-                            Label(key.display, systemImage: "checkmark")
-                        } else {
-                            Text(key.display)
+            HStack(spacing: 8) {
+                Menu {
+                    ForEach(HotkeyKey.allCases) { key in
+                        Button {
+                            selection.wrappedValue = key.rawValue
+                        } label: {
+                            if selection.wrappedValue == key.rawValue {
+                                Label(key.display, systemImage: "checkmark")
+                            } else {
+                                Text(key.display)
+                            }
                         }
                     }
+                } label: {
+                    Text(HotkeyShortcut.display(
+                        for: selection.wrappedValue,
+                        fallback: target == .dictation ? .rightOption : .rightCommand
+                    ))
                 }
-                Divider()
                 Button("Custom…") { hotkeyCaptureTarget = target }
-            } label: {
-                Text(HotkeyShortcut.display(
-                    for: selection.wrappedValue,
-                    fallback: target == .dictation ? .rightOption : .rightCommand
-                ))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
         }
     }
 

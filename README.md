@@ -35,7 +35,7 @@ After installation, Prompter can check for and install new releases from its Set
 - **Snippets** — say a trigger such as “my email address” to insert reusable text.
 - **App-aware style** — use different voices and formatting rules for Messages, Slack, email, AI tools, or your own app groups.
 - **Insights** — see words dictated, estimated time saved, streaks, top apps, and reported OpenRouter cost.
-- **Customizable hotkeys** — change both dictation and Prompt Mode keys in Settings.
+- **Customizable hotkeys** — choose a preset or click **Custom…**, then press the key or key combination you want for either Dictation or Prompt Mode.
 
 Pressing another key while holding a Prompter hotkey cancels the recording, so normal keyboard shortcuts continue to work.
 

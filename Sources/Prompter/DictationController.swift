@@ -21,7 +21,11 @@ final class DictationController {
     var isPaused = false
     /// True while onboarding's key-picker steps are on screen: pressing a
     /// modifier key there is choosing a hotkey, not starting a dictation.
-    var hotkeySelectionActive = false
+    var hotkeySelectionActive = false {
+        didSet {
+            if hotkeySelectionActive != oldValue { hotkeys.resetState() }
+        }
+    }
     private var maxDurationTimer: DispatchWorkItem?
     /// Bumped on every session start/stop; async startup steps abort if it moved.
     private var sessionGen = 0

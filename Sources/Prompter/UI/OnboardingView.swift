@@ -250,7 +250,7 @@ struct OnboardingView: View {
             }
 
             if let conflictWith, HotkeyShortcut.matches(selection.wrappedValue, conflictWith) {
-                Text("⚠️ That key is already doing dictation — pick a different one so both can work.")
+                Text("⚠️ That shortcut is already doing dictation — pick a different one so both can work.")
                     .font(.callout).foregroundStyle(.orange)
             } else if selection.wrappedValue == HotkeyKey.fn.rawValue {
                 Text("Using fn: set System Settings → Keyboard → “Press 🌐 key” to “Do Nothing” so the system doesn't race Prompter.")

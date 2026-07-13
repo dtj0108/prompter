@@ -46,9 +46,9 @@ enum HotkeyKey: String, CaseIterable, Identifiable {
 }
 
 /// Hold-to-talk (hold, talk, release) and hands-free (tap, talk, tap again) for
-/// both the built-in right-side modifier choices and user-recorded shortcuts.
-/// Event monitors remain passive: modifier/function shortcuts are recommended so
-/// Prompter never steals ordinary typing or existing system shortcuts.
+/// the built-in choices, user-recorded keyboard shortcuts, and auxiliary mouse
+/// buttons. Event monitors remain passive so normal keyboard and mouse behavior
+/// continues alongside Prompter.
 final class HotkeyMonitor {
     /// (mode, handsFree)
     var onBegin: ((DictationMode, Bool) -> Void)?
@@ -78,9 +78,17 @@ final class HotkeyMonitor {
         let keyUpHandler: (NSEvent) -> Void = { [weak self] event in
             self?.handleKeyUp(event)
         }
+        let mouseDownHandler: (NSEvent) -> Void = { [weak self] event in
+            self?.handleMouseDown(event)
+        }
+        let mouseUpHandler: (NSEvent) -> Void = { [weak self] event in
+            self?.handleMouseUp(event)
+        }
         if let m = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, handler: flagsHandler) { monitors.append(m) }
         if let m = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: keyHandler) { monitors.append(m) }
         if let m = NSEvent.addGlobalMonitorForEvents(matching: .keyUp, handler: keyUpHandler) { monitors.append(m) }
+        if let m = NSEvent.addGlobalMonitorForEvents(matching: .otherMouseDown, handler: mouseDownHandler) { monitors.append(m) }
+        if let m = NSEvent.addGlobalMonitorForEvents(matching: .otherMouseUp, handler: mouseUpHandler) { monitors.append(m) }
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
             flagsHandler(event)
             return event
@@ -91,6 +99,14 @@ final class HotkeyMonitor {
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyUp) { event in
             keyUpHandler(event)
+            return event
+        } as Any)
+        monitors.append(NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { event in
+            mouseDownHandler(event)
+            return event
+        } as Any)
+        monitors.append(NSEvent.addLocalMonitorForEvents(matching: .otherMouseUp) { event in
+            mouseUpHandler(event)
             return event
         } as Any)
     }
@@ -142,6 +158,7 @@ final class HotkeyMonitor {
             }
 
         case .pending(let mode, let shortcut):
+            if shortcut.isMouseButton { return }
             if !shortcut.isModifierOnly {
                 if !shortcut.requiredModifiersAreDown(in: event) {
                     completeTap(mode: mode, shortcut: shortcut)
@@ -159,6 +176,7 @@ final class HotkeyMonitor {
             }
 
         case .active(_, let shortcut):
+            if shortcut.isMouseButton { return }
             // A second event for the held key is necessarily its release. Judging by
             // keyCode (not aggregate flags) keeps this correct when the same-named
             // modifier on the other side of the keyboard is also down.
@@ -192,7 +210,8 @@ final class HotkeyMonitor {
             return
 
         case .pending(_, let shortcut):
-            if !shortcut.isModifierOnly,
+            if !shortcut.isMouseButton,
+               !shortcut.isModifierOnly,
                event.keyCode == shortcut.keyCode,
                event.isARepeat { return }
             // Any real key while the modifier is held = a normal shortcut. Stand down.
@@ -200,7 +219,8 @@ final class HotkeyMonitor {
             state = .idle
 
         case .active(_, let shortcut):
-            if !shortcut.isModifierOnly,
+            if !shortcut.isMouseButton,
+               !shortcut.isModifierOnly,
                event.keyCode == shortcut.keyCode,
                event.isARepeat { return }
             if event.keyCode == 53 { // Esc cancels
@@ -229,11 +249,59 @@ final class HotkeyMonitor {
     private func handleKeyUp(_ event: NSEvent) {
         switch state {
         case .pending(let mode, let shortcut):
-            guard !shortcut.isModifierOnly, event.keyCode == shortcut.keyCode else { return }
+            guard !shortcut.isMouseButton,
+                  !shortcut.isModifierOnly,
+                  event.keyCode == shortcut.keyCode else { return }
             completeTap(mode: mode, shortcut: shortcut)
 
         case .active(_, let shortcut):
-            guard !shortcut.isModifierOnly, event.keyCode == shortcut.keyCode else { return }
+            guard !shortcut.isMouseButton,
+                  !shortcut.isModifierOnly,
+                  event.keyCode == shortcut.keyCode else { return }
+            state = .idle
+            onCommit?()
+
+        case .idle, .latched:
+            return
+        }
+    }
+
+    private func handleMouseDown(_ event: NSEvent) {
+        switch state {
+        case .idle:
+            for (shortcut, mode) in candidates where shortcut.matchesMouseButton(event) {
+                beginPending(mode: mode, shortcut: shortcut)
+                return
+            }
+
+        case .pending(_, let shortcut):
+            guard shortcut.isMouseButton else { return }
+            guard !shortcut.matchesMouseButton(event) else { return }
+            holdTimer?.cancel()
+            state = .idle
+
+        case .active(_, let shortcut):
+            guard shortcut.isMouseButton else { return }
+            guard !shortcut.matchesMouseButton(event) else { return }
+            state = .idle
+            onAbort?()
+
+        case .latched(_, let shortcut):
+            if shortcut.matchesMouseButton(event) {
+                state = .idle
+                onCommit?()
+            }
+        }
+    }
+
+    private func handleMouseUp(_ event: NSEvent) {
+        switch state {
+        case .pending(let mode, let shortcut):
+            guard shortcut.matchesMouseButton(event) else { return }
+            completeTap(mode: mode, shortcut: shortcut)
+
+        case .active(_, let shortcut):
+            guard shortcut.matchesMouseButton(event) else { return }
             state = .idle
             onCommit?()
 
@@ -265,6 +333,53 @@ final class HotkeyMonitor {
         }
         holdTimer = work
         DispatchQueue.main.asyncAfter(deadline: .now() + threshold, execute: work)
+    }
+
+    /// Deterministic headless coverage for mouse-shortcut persistence and the
+    /// two live transitions that finish a held or hands-free recording.
+    static func verifyAuxiliaryMouseButtonHandling() -> Bool {
+        let middle = HotkeyShortcut(mouseButtonNumber: 2)
+        let side = HotkeyShortcut(mouseButtonNumber: 3)
+        guard middle.storedValue == "mouse:2",
+              middle.display == "Middle Click",
+              side.storedValue == "mouse:3",
+              side.display == "Mouse Button 4",
+              HotkeyShortcut(storedValue: middle.storedValue) == middle,
+              HotkeyShortcut(storedValue: side.storedValue) == side,
+              HotkeyShortcut(storedValue: "mouse:1") == nil,
+              let sideDown = syntheticMouseEvent(type: .otherMouseDown, buttonNumber: 3),
+              let sideUp = syntheticMouseEvent(type: .otherMouseUp, buttonNumber: 3),
+              let otherUp = syntheticMouseEvent(type: .otherMouseUp, buttonNumber: 4) else {
+            return false
+        }
+
+        let monitor = HotkeyMonitor()
+        var commits = 0
+        monitor.onCommit = { commits += 1 }
+
+        monitor.state = .active(mode: .dictate, shortcut: side)
+        monitor.handleMouseUp(sideUp)
+        guard commits == 1 else { return false }
+
+        monitor.state = .latched(mode: .dictate, shortcut: side)
+        monitor.handleMouseDown(sideDown)
+        guard commits == 2 else { return false }
+
+        monitor.state = .active(mode: .dictate, shortcut: side)
+        monitor.handleMouseUp(otherUp)
+        return commits == 2
+    }
+
+    private static func syntheticMouseEvent(type: CGEventType, buttonNumber: Int) -> NSEvent? {
+        guard let button = CGMouseButton(rawValue: UInt32(buttonNumber)),
+              let cgEvent = CGEvent(
+            mouseEventSource: nil,
+            mouseType: type,
+            mouseCursorPosition: .zero,
+            mouseButton: button
+        ) else { return nil }
+        cgEvent.setIntegerValueField(CGEventField.mouseEventButtonNumber, value: Int64(buttonNumber))
+        return NSEvent(cgEvent: cgEvent)
     }
 
 }

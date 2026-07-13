@@ -16,7 +16,8 @@ enum HotkeyCaptureTarget: String, Identifiable {
 }
 
 /// Small modal recorder shared by Settings and onboarding. It saves as soon as
-/// the user presses a non-modifier key, or releases a modifier pressed by itself.
+/// the user presses a non-modifier key or auxiliary mouse button, or releases a
+/// modifier pressed by itself.
 struct HotkeyRecorderSheet: View {
     let target: HotkeyCaptureTarget
     let onCapture: (HotkeyShortcut) -> Void
@@ -25,13 +26,16 @@ struct HotkeyRecorderSheet: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            Image(systemName: "keyboard")
-                .font(.system(size: 30))
-                .foregroundStyle(Color.accentColor)
+            HStack(spacing: 12) {
+                Image(systemName: "keyboard")
+                Image(systemName: "computermouse")
+            }
+            .font(.system(size: 27))
+            .foregroundStyle(Color.accentColor)
 
             VStack(spacing: 6) {
                 Text(target.title).font(.title2.bold())
-                Text("Press the key or key combination you want to use.")
+                Text("Press a key, key combination, or extra mouse button.")
                     .foregroundStyle(.secondary)
             }
 
@@ -58,7 +62,7 @@ struct HotkeyRecorderSheet: View {
             }
             .frame(height: 72)
 
-            Text("Tip: a modifier combination or function key won’t interfere with normal typing. Press Esc to cancel.")
+            Text("Middle-click and extra gaming-mouse buttons are supported. Left and right click stay unchanged. Press Esc to cancel.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -94,15 +98,25 @@ private final class ShortcutCaptureNSView: NSView {
 
     private var pendingModifierKeyCode: UInt16?
     private var hasFinished = false
+    private var mouseCaptureMonitor: Any?
 
     override var acceptsFirstResponder: Bool { true }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if window == nil {
+            removeMouseCaptureMonitor()
+            return
+        }
+        installMouseCaptureMonitor()
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.window?.makeFirstResponder(self)
         }
+    }
+
+    deinit {
+        removeMouseCaptureMonitor()
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -139,6 +153,21 @@ private final class ShortcutCaptureNSView: NSView {
         pendingModifierKeyCode = nil
         let modifiers = event.modifierFlags.intersection(HotkeyShortcut.relevantModifiers)
         finish(HotkeyShortcut(keyCode: event.keyCode, modifiers: modifiers))
+    }
+
+    private func installMouseCaptureMonitor() {
+        guard mouseCaptureMonitor == nil else { return }
+        mouseCaptureMonitor = NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { [weak self] event in
+            guard let self, self.window != nil, !self.hasFinished else { return event }
+            guard event.buttonNumber >= 2 else { return event }
+            self.finish(HotkeyShortcut(mouseButtonNumber: event.buttonNumber))
+            return nil
+        }
+    }
+
+    private func removeMouseCaptureMonitor() {
+        if let mouseCaptureMonitor { NSEvent.removeMonitor(mouseCaptureMonitor) }
+        mouseCaptureMonitor = nil
     }
 
     private func finish(_ shortcut: HotkeyShortcut) {

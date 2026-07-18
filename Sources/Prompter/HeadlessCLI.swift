@@ -4,11 +4,21 @@ import SwiftUI
 
 /// Command-line test entry points so the pipeline can be verified without mic/GUI.
 enum HeadlessCLI {
+    static private(set) var exitCode: Int32 = 0
 
     /// Returns true if a headless command was handled (caller should exit).
     static func runIfRequested() -> Bool {
         let args = CommandLine.arguments
         guard args.count >= 2 else { return false }
+
+        if ["--transcribe", "--transcribe-openrouter"].contains(args[1]),
+           !AmbitiousAuthManager.hasUsableCachedIdentity() {
+            exitCode = 3
+            FileHandle.standardError.write(Data(
+                "Prompter requires a signed-in Ambitious account. Open the app and sign in first.\n".utf8
+            ))
+            return true
+        }
 
         switch args[1] {
         case "--transcribe":

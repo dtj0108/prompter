@@ -9,7 +9,7 @@ import AppKit
 //   Prompter --render-main <png-path>     → render the complete dashboard for visual QA
 //   Prompter --render-style <png-path>   → render the Style page for visual QA
 if HeadlessCLI.runIfRequested() {
-    exit(0)
+    exit(HeadlessCLI.exitCode)
 }
 
 let app = NSApplication.shared

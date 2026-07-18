@@ -18,6 +18,7 @@ final class DictationController {
 
     private var session: Session?
     private var busy = false
+    var hasInFlightDictation: Bool { session != nil || busy }
     var isPaused = false
     /// True while onboarding's key-picker steps are on screen: pressing a
     /// modifier key there is choosing a hotkey, not starting a dictation.
@@ -89,6 +90,11 @@ final class DictationController {
 
     private func beginSession(mode: DictationMode, handsFree: Bool = false) {
         guard !hotkeySelectionActive else { return }
+        guard AmbitiousAuthManager.shared.isSignedIn else {
+            HUD.shared.flash(.failure("Sign in with Ambitious to use Prompter"), for: 3.5)
+            WindowRouter.shared.openOnboarding(startStep: 0)
+            return
+        }
         guard !isPaused else {
             HUD.shared.flash(.failure("Prompter is paused"))
             return
@@ -147,6 +153,7 @@ final class DictationController {
                     recorder.discardRecording()
                     engine.cancel()
                     HUD.shared.flash(.failure("Couldn't start recording"))
+                    notifyAuthIfIdle()
                 }
             }
         }
@@ -171,6 +178,7 @@ final class DictationController {
             busy = false
             engine.cancel()
             HUD.shared.hide()
+            notifyAuthIfIdle()
             return
         }
 
@@ -193,6 +201,7 @@ final class DictationController {
                         HUD.shared.flash(.failure("Didn't catch that"))
                     }
                     self.busy = false
+                    self.notifyAuthIfIdle()
                 }
                 return
             }
@@ -243,6 +252,7 @@ final class DictationController {
                     HUD.shared.flash(.failure(reason), for: 3.5)
                 }
                 self.busy = false
+                self.notifyAuthIfIdle()
             }
         }
     }
@@ -280,6 +290,7 @@ final class DictationController {
         recorder.onBuffer = nil
         engine.cancel()
         HUD.shared.hide()
+        notifyAuthIfIdle()
     }
 
     // MARK: - Transform
@@ -382,5 +393,10 @@ final class DictationController {
     private func playSound(_ name: String) {
         guard ConfigStore.shared.config.soundsEnabled else { return }
         NSSound(named: name)?.play()
+    }
+
+    private func notifyAuthIfIdle() {
+        guard !hasInFlightDictation else { return }
+        AmbitiousAuthManager.shared.dictationDidBecomeIdle()
     }
 }

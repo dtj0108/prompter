@@ -4,6 +4,7 @@ import ServiceManagement
 
 struct SettingsView: View {
     @EnvironmentObject var store: ConfigStore
+    @ObservedObject private var auth = AmbitiousAuthManager.shared
     @ObservedObject private var updater = AppUpdater.shared
     @State private var micStatus = Recorder.micAuthorized()
     @State private var axStatus = AXIsProcessTrusted()
@@ -15,6 +16,35 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             Form {
+            Section("Ambitious account") {
+                if let identity = auth.identity {
+                    LabeledContent("Signed in", value: identity.email ?? "Ambitious member")
+                    Text("This sign-in only confirms your identity. Its tokens cannot read or post Ambitious content, and cached identity keeps Prompter working offline.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        Button(auth.activity == .refreshing ? "Checking…" : "Check account") {
+                            auth.refreshNow()
+                        }
+                        .disabled(auth.activity == .refreshing || auth.activity == .signOutPending)
+                        Button("Sign out") { auth.signOut() }
+                            .disabled(auth.activity == .signOutPending)
+                    }
+                    Text("You can also remove Prompter at Ambitious → Settings → Connected Apps.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("A free Ambitious account is required for dictation and Prompt Mode.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button(auth.activity == .signingIn ? "Signing in…" : "Sign in with Ambitious") {
+                        auth.signIn()
+                    }
+                    .disabled(auth.activity == .signingIn || !auth.isActivated)
+                }
+                if let message = auth.errorMessage {
+                    Text(message).font(.caption)
+                        .foregroundStyle(auth.activity == .signOutPending ? Color.secondary : Color.orange)
+                }
+            }
+
             Section("Hotkeys") {
                 hotkeyMenuRow("Dictation", selection: $store.config.dictationHotkey, target: .dictation)
                 hotkeyMenuRow("Prompt Mode", selection: $store.config.promptHotkey, target: .prompt)

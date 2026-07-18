@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Prompts.ensurePromptModeFileExists()
         setupMainMenu()
         DictationController.shared.start()
+        AmbitiousAuthManager.shared.startBackgroundRefreshSchedule()
         HUD.shared.start()
         AppUpdater.shared.checkForUpdates()
         // The launch-time check goes stale on a long-running app; re-check
@@ -39,16 +40,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// update resets TCC grants), reopen the setup assistant on the broken step
     /// so the user can re-grant instead of silently having dead hotkeys.
     private func presentLaunchWindow() {
+        guard AmbitiousAuthManager.shared.isSignedIn else {
+            WindowRouter.shared.openOnboarding(startStep: 0)
+            return
+        }
         guard ConfigStore.shared.config.onboardingDone else {
             WindowRouter.shared.openOnboarding()
             return
         }
         if !Recorder.micAuthorized() {
             Log.write("microphone permission missing at launch — reopening setup assistant")
-            WindowRouter.shared.openOnboarding(startStep: 1)
+            WindowRouter.shared.openOnboarding(startStep: 2)
         } else if !AXIsProcessTrusted() {
             Log.write("accessibility permission missing at launch — reopening setup assistant")
-            WindowRouter.shared.openOnboarding(startStep: 2)
+            WindowRouter.shared.openOnboarding(startStep: 3)
         } else {
             WindowRouter.shared.openMain()
         }

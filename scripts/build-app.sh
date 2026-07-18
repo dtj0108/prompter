@@ -6,6 +6,7 @@
 #   ./scripts/build-app.sh --install       # build + install to /Applications
 #   ./scripts/build-app.sh --install --relaunch
 #   ./scripts/build-app.sh --identity prompter-dev --install
+#   ./scripts/build-app.sh --auth-lab        # DEBUG app with prompter-lab:// callback
 #   ./scripts/build-app.sh --version 1.0.42 --build 42 --update-repository owner/repo
 #
 # NOTE on permissions: with ad-hoc signing ("-"), macOS treats every rebuilt
@@ -22,6 +23,7 @@ RELAUNCH=0
 VERSION=""
 BUILD_NUMBER=""
 UPDATE_REPOSITORY=""
+AUTH_LAB=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --identity) IDENTITY="$2"; shift 2 ;;
@@ -30,18 +32,39 @@ while [[ $# -gt 0 ]]; do
     --version) VERSION="$2"; shift 2 ;;
     --build) BUILD_NUMBER="$2"; shift 2 ;;
     --update-repository) UPDATE_REPOSITORY="$2"; shift 2 ;;
+    --auth-lab) AUTH_LAB=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
-echo "==> swift build -c release"
-swift build -c release
+if [[ $AUTH_LAB -eq 1 && "$IDENTITY" == Developer\ ID\ Application:* ]]; then
+  echo "--auth-lab is development-only and cannot use a release signing identity" >&2
+  exit 2
+fi
+
+BUILD_CONFIGURATION="release"
+if [[ $AUTH_LAB -eq 1 ]]; then
+  BUILD_CONFIGURATION="debug"
+fi
+
+echo "==> swift build -c $BUILD_CONFIGURATION"
+swift build -c "$BUILD_CONFIGURATION"
 
 APP=build/Prompter.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp .build/release/Prompter "$APP/Contents/MacOS/Prompter"
+cp ".build/$BUILD_CONFIGURATION/Prompter" "$APP/Contents/MacOS/Prompter"
 cp bundle/Info.plist "$APP/Contents/Info.plist"
+
+if [[ $AUTH_LAB -eq 1 ]]; then
+  # The custom callback exists only in a DEBUG binary and DEBUG bundle. Public
+  # releases have no claimable custom URL scheme; they use verified HTTPS.
+  /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string com.drew.prompter.ambitious-lab" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string prompter-lab" "$APP/Contents/Info.plist"
+fi
 
 if [[ -n "$VERSION" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
@@ -60,11 +83,15 @@ fi
 cp bundle/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 echo "==> codesign (identity: $IDENTITY)"
+ENTITLEMENTS="bundle/Prompter.entitlements"
+if [[ "$IDENTITY" == Developer\ ID\ Application:* ]]; then
+  ENTITLEMENTS="bundle/Prompter.release.entitlements"
+fi
 SIGN_ARGS=(
   --force
   --sign "$IDENTITY"
   --identifier com.drew.prompter
-  --entitlements bundle/Prompter.entitlements
+  --entitlements "$ENTITLEMENTS"
 )
 if [[ "$IDENTITY" == Developer\ ID\ Application:* ]]; then
   # Developer ID distribution requires hardened runtime and a trusted timestamp.

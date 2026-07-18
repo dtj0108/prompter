@@ -13,6 +13,14 @@ let package = Package(
             swiftSettings: [
                 .swiftLanguageMode(.v5)
             ]
+        ),
+        .testTarget(
+            name: "PrompterTests",
+            dependencies: ["Prompter"],
+            path: "Tests/PrompterTests",
+            swiftSettings: [
+                .swiftLanguageMode(.v5)
+            ]
         )
     ]
 )

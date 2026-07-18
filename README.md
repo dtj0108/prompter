@@ -4,7 +4,7 @@
 
 Prompter lets you talk instead of type in any Mac app. Hold a hotkey, speak, and release: your words are transcribed, optionally cleaned up, and inserted wherever your cursor is. A separate Prompt Mode turns rough spoken ideas into structured instructions for coding agents.
 
-Prompter itself is completely free to download and use. There is no Prompter subscription, account, or telemetry service. The optional OpenRouter integration uses your own API key and may incur provider charges.
+Prompter itself is completely free to download and use. It requires a free Ambitious account, but there is no Prompter subscription or telemetry service. “Sign in with Ambitious” only confirms your identity: Prompter's tokens cannot read your feed, posts, messages, or other Ambitious content, and a saved sign-in keeps working when you're offline. The optional OpenRouter integration uses your own API key and may incur provider charges.
 
 ## Download
 
@@ -14,6 +14,7 @@ Requirements:
 
 - Apple Silicon Mac
 - macOS 26 or newer
+- A free Ambitious account
 - Microphone and Accessibility permissions
 - Optional: an [OpenRouter API key](https://openrouter.ai/keys) for fast AI cleanup, Prompt Mode, and opt-in Whisper transcription
 
@@ -21,7 +22,7 @@ To install:
 
 1. Unzip `Prompter.zip` and move `Prompter.app` to Applications.
 2. Open Prompter. If macOS blocks the first launch, right-click the app, choose **Open**, then confirm.
-3. Follow the Setup Assistant to grant Microphone and Accessibility access.
+3. Follow the Setup Assistant to sign in with Ambitious, then grant Microphone and Accessibility access.
 4. Add your OpenRouter key in **Settings → AI models** if you want AI cleanup or Prompt Mode. Cloud transcription remains a separate opt-in.
 
 After installation, Prompter can check for and install new releases from its Settings window.
@@ -48,6 +49,8 @@ Cloud transcription is a separate opt-in setting. When enabled, Prompter records
 ## Privacy and cost
 
 - Prompter is free. You do not pay us to download, install, or use it.
+- A free Ambitious account is required. Account identity and tokens are kept in the Mac Keychain, never in `config.json` or `prompter.log`.
+- Ambitious sign-in is identity-only. It cannot read or post Ambitious content, and cached identity keeps dictation available through network or Ambitious outages.
 - OpenRouter and other optional third-party services may charge for API usage under their own terms.
 - Settings, dictionary entries, snippets, styles, and history are stored locally on your Mac.
 - Audio is uploaded only when **Use OpenRouter for transcription** is explicitly enabled; temporary recordings are deleted after transcription.
@@ -82,7 +85,11 @@ Prompter stores editable state in `~/Library/Application Support/Prompter/`:
 | `prompts/prompt-mode.md` | Editable Prompt Mode instructions |
 | `prompter.log` | Diagnostic app log |
 
+Ambitious identity and OAuth tokens are stored separately in the macOS Keychain under service `com.drew.prompter.ambitious`; they are never written to these files.
+
 ## Headless testing
+
+The two `--transcribe*` commands require a cached Ambitious sign-in, just like GUI dictation. Developer diagnostics beginning with `--test-` stay available without an account.
 
 ```sh
 .build/release/Prompter --transcribe test.aiff

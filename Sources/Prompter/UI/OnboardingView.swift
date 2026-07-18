@@ -5,12 +5,13 @@ import AVFoundation
 /// app needs, with live status checks. Reopenable from the Prompter app menu.
 struct OnboardingView: View {
     @EnvironmentObject var store: ConfigStore
+    @ObservedObject private var auth = AmbitiousAuthManager.shared
     @State private var step: Int
 
     /// Jump straight to a step — used when a permission was lost (e.g. after an
     /// app update reset TCC) and the assistant reopens on the broken step.
     init(startStep: Int = 0) {
-        _step = State(initialValue: min(max(startStep, 0), 6))
+        _step = State(initialValue: min(max(startStep, 0), 7))
     }
     @State private var micGranted = Recorder.micAuthorized()
     @State private var axGranted = AXIsProcessTrusted()
@@ -22,7 +23,7 @@ struct OnboardingView: View {
     @State private var hotkeyCaptureTarget: HotkeyCaptureTarget?
 
     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
-    private let stepCount = 7
+    private let stepCount = 8
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,8 +47,16 @@ struct OnboardingView: View {
                 }
                 Spacer()
                 if step < stepCount - 1 {
-                    Button("Continue") { step += 1 }
+                    Button(step == 0 && store.config.onboardingDone ? "Return to Prompter" : "Continue") {
+                        if step == 0 && store.config.onboardingDone {
+                            WindowRouter.shared.closeOnboarding()
+                            WindowRouter.shared.openMain()
+                        } else {
+                            step += 1
+                        }
+                    }
                         .keyboardShortcut(.defaultAction)
+                        .disabled(step == 0 && !auth.isSignedIn)
                 } else {
                     Button("Finish") {
                         store.config.onboardingDone = true
@@ -83,20 +92,54 @@ struct OnboardingView: View {
 
     @ViewBuilder
     private var content: some View {
-        // AppDelegate reopens directly on steps 1 (mic) and 2 (accessibility)
+        // AppDelegate reopens directly on steps 2 (mic) and 3 (accessibility)
         // when a permission is lost — keep those indices stable.
         switch step {
-        case 0: welcome
-        case 1: microphone
-        case 2: accessibility
-        case 3: dictationKeyStep
-        case 4: promptKeyStep
-        case 5: aiEngine
+        case 0: ambitiousAccount
+        case 1: welcome
+        case 2: microphone
+        case 3: accessibility
+        case 4: dictationKeyStep
+        case 5: promptKeyStep
+        case 6: aiEngine
         default: tryIt
         }
     }
 
-    // MARK: Step 1 — Welcome
+    // MARK: Step 1 — Ambitious account
+
+    private var ambitiousAccount: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            header("🚀", "Sign in with Ambitious",
+                   "Prompter is free, but it requires a free Ambitious account. Sign-in confirms who you are; it does not give Prompter access to your posts, messages, feed, or other Ambitious data.")
+
+            if let identity = auth.identity {
+                statusRow(granted: true, label: identity.email.map { "Signed in as \($0)" } ?? "Signed in with Ambitious")
+                Text("You can keep using Prompter even when you're offline or Ambitious is temporarily unavailable.")
+                    .font(.callout).foregroundStyle(.secondary)
+            } else {
+                Button(auth.activity == .signingIn ? "Signing in…" : "Sign in with Ambitious") {
+                    auth.signIn()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(auth.activity == .signingIn || !auth.isActivated)
+
+                if !auth.isActivated {
+                    Text("Sign-in is built but waiting for Ambitious production activation.")
+                        .font(.callout).foregroundStyle(.orange)
+                }
+            }
+
+            if let message = auth.errorMessage {
+                Text(message).font(.callout).foregroundStyle(.red)
+            }
+
+            Text("Your sign-in is stored securely in your Mac's Keychain. Prompter never puts account tokens in its settings or logs.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Step 2 — Welcome
 
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -328,13 +371,13 @@ struct OnboardingView: View {
             NSEvent.removeMonitor(monitor)
             keyMonitor = nil
         }
-        let selecting = step == 3 || step == 4
+        let selecting = step == 4 || step == 5
         DictationController.shared.hotkeySelectionActive = selecting
         guard selecting else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
             guard let key = HotkeyKey.allCases.first(where: { $0.keyCode == event.keyCode }),
                   event.modifierFlags.contains(key.flag) else { return event }
-            if step == 3 {
+            if step == 4 {
                 ConfigStore.shared.config.dictationHotkey = key.rawValue
             } else {
                 ConfigStore.shared.config.promptHotkey = key.rawValue

@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 **Prompter** — Drew's personal Wispr Flow replacement. A native macOS Dock dictation app: hold/tap a right-side modifier key, talk, and polished text is pasted at the cursor. Swift + SwiftUI, SwiftPM only (no Xcode project). Runs on macOS 26+, Apple Silicon.
 
-Pipeline: hotkey (`HotkeyMonitor`) → mic (`Recorder`) → macOS 26 `SpeechAnalyzer` local STT by default (or opt-in Whisper Turbo through `STT/OpenRouterTranscriber.swift`, which also records a temporary native-format WAV) → optional AI cleanup (`LLM/LLMClient.swift`) → paste (`Output/Paster.swift`) → log (`InsightsStore`). Orchestrated by `DictationController`; temporary audio is deleted after each request.
+Pipeline: cached Ambitious identity gate → hotkey (`HotkeyMonitor`) → mic (`Recorder`) → macOS 26 `SpeechAnalyzer` local STT by default (or opt-in Whisper Turbo through `STT/OpenRouterTranscriber.swift`, which also records a temporary native-format WAV) → optional AI cleanup (`LLM/LLMClient.swift`) → paste (`Output/Paster.swift`) → log (`InsightsStore`). Orchestrated by `DictationController`; temporary audio is deleted after each request. The auth gate performs no network work in this hot path.
 
 ## Build, install, test
 
@@ -37,7 +37,7 @@ After installing a rebuilt app: quit the running instance first (`pkill -x Promp
 
 ## Data & config
 
-All state in `~/Library/Application Support/Prompter/`: `config.json` (incl. OpenRouter key, chmod 600), `dictionary.json`, `snippets.json`, `styles.json`, `history.jsonl` (insights), `prompts/prompt-mode.md` (user-editable meta-prompt), `prompter.log` (read this first when debugging).
+Editable app state lives in `~/Library/Application Support/Prompter/`: `config.json` (incl. OpenRouter key, chmod 600), `dictionary.json`, `snippets.json`, `styles.json`, `history.jsonl` (insights), `prompts/prompt-mode.md` (user-editable meta-prompt), `prompter.log` (read this first when debugging). Ambitious identity and OAuth tokens live only in the macOS Keychain under `com.drew.prompter.ambitious`; never log an authorization code, token, or full OAuth callback URL.
 
 OpenRouter transcription is opt-in and uses `openai/whisper-large-v3-turbo`; local Apple STT is the default. Text cleanup and Prompt Mode default to the low-latency `google/gemini-3.1-flash-lite`. STT and cleanup `usage.cost` values are both logged per dictation into insights.
 

@@ -49,7 +49,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// so the user can re-grant instead of silently having dead hotkeys.
     private func presentLaunchWindow() {
         guard AmbitiousAuthManager.shared.isSignedIn else {
-            WindowRouter.shared.openOnboarding(startStep: 0)
+            // First run gets the full designed intro; a signed-out return visit
+            // goes straight to the sign-in screen.
+            WindowRouter.shared.openOnboarding(
+                startStep: ConfigStore.shared.config.onboardingDone ? .signIn : .welcome
+            )
             return
         }
         guard ConfigStore.shared.config.onboardingDone else {
@@ -58,10 +62,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if !Recorder.micAuthorized() {
             Log.write("microphone permission missing at launch — reopening setup assistant")
-            WindowRouter.shared.openOnboarding(startStep: 2)
+            WindowRouter.shared.openOnboarding(startStep: .microphone)
         } else if !AXIsProcessTrusted() {
             Log.write("accessibility permission missing at launch — reopening setup assistant")
-            WindowRouter.shared.openOnboarding(startStep: 3)
+            WindowRouter.shared.openOnboarding(startStep: .accessibility)
         } else {
             WindowRouter.shared.openMain()
         }

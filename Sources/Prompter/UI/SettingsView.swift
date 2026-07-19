@@ -26,8 +26,10 @@ struct SettingsView: View {
                             auth.refreshNow()
                         }
                         .disabled(auth.activity == .refreshing || auth.activity == .signOutPending)
+                        .clickCursor()
                         Button("Sign out") { auth.signOut() }
                             .disabled(auth.activity == .signOutPending)
+                            .clickCursor()
                     }
                     Text("You can also remove Prompter at Ambitious → Settings → Connected Apps.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -38,6 +40,7 @@ struct SettingsView: View {
                         auth.signIn()
                     }
                     .disabled(auth.activity == .signingIn || !auth.isActivated)
+                    .clickCursor()
                 }
                 if let message = auth.errorMessage {
                     Text(message).font(.caption)
@@ -48,7 +51,7 @@ struct SettingsView: View {
             Section("Hotkeys") {
                 hotkeyMenuRow("Dictation", selection: $store.config.dictationHotkey, target: .dictation)
                 hotkeyMenuRow("Prompt Mode", selection: $store.config.promptHotkey, target: .prompt)
-                Toggle("Tap for hands-free (tap again to finish)", isOn: $store.config.tapToLockEnabled)
+                Toggle("Tap for hands-free (tap again to finish)", isOn: $store.config.tapToLockEnabled).clickCursor()
                 Text("Choose a quick option or click Custom… and press a key, key combination, middle-click, or extra mouse button. Hold = push-to-talk; tap = hands-free. Esc cancels. Changes apply immediately.")
                     .font(.caption).foregroundStyle(.secondary)
                 if HotkeyShortcut.matches(store.config.dictationHotkey, store.config.promptHotkey) {
@@ -62,11 +65,11 @@ struct SettingsView: View {
             }
 
             Section("AI models") {
-                Toggle("Clean up dictation with AI", isOn: $store.config.llmCleanupEnabled)
+                Toggle("Clean up dictation with AI", isOn: $store.config.llmCleanupEnabled).clickCursor()
                 Text("Off = raw transcript with dictionary corrections only.")
                     .font(.caption).foregroundStyle(.secondary)
                 SecureField("OpenRouter API key (sk-or-…)", text: $store.config.openRouterKey)
-                Toggle("Use OpenRouter for transcription", isOn: $store.config.useOpenRouterTranscription)
+                Toggle("Use OpenRouter for transcription", isOn: $store.config.useOpenRouterTranscription).clickCursor()
                 Text("Off = fast, private Apple transcription. OpenRouter remains available for cleanup and Prompt Mode.")
                     .font(.caption).foregroundStyle(.secondary)
                 Picker("Transcription model", selection: $store.config.openRouterTranscriptionModel) {
@@ -79,6 +82,7 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.menu)
                 .disabled(!store.config.useOpenRouterTranscription)
+                .clickCursor()
                 Picker("Cleanup model", selection: $store.config.openRouterCleanupModel) {
                     ForEach(AIModelCatalog.choices) { choice in
                         Text("\(choice.name) — \(choice.detail)").tag(choice.id)
@@ -88,6 +92,7 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
+                .clickCursor()
                 Picker("Prompt Mode model", selection: $store.config.openRouterModel) {
                     ForEach(AIModelCatalog.choices) { choice in
                         Text("\(choice.name) — \(choice.detail)").tag(choice.id)
@@ -97,6 +102,7 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
+                .clickCursor()
                 Text("Gemini Flash Lite is the fast, inexpensive default for cleanup and Prompt Mode. Cloud transcription is a separate opt-in; Apple stays the default.")
                     .font(.caption).foregroundStyle(.secondary)
                 DisclosureGroup("Use custom OpenRouter model IDs") {
@@ -109,6 +115,7 @@ struct SettingsView: View {
                 }
                 Link("Get a key at openrouter.ai/keys", destination: URL(string: "https://openrouter.ai/settings/keys")!)
                     .font(.caption)
+                    .clickCursor()
                 Text("“:free” models may be request-limited and may let the provider train on your text.")
                     .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Backend in use", value: LLMClient.shared.backendDescription)
@@ -117,6 +124,7 @@ struct SettingsView: View {
                         runBackendTest()
                     }
                     .disabled(testing)
+                    .clickCursor()
                     if !testResult.isEmpty {
                         Text(testResult).font(.caption)
                             .foregroundStyle(testResult.hasPrefix("✓") ? .green : .red)
@@ -142,31 +150,35 @@ struct SettingsView: View {
                             refreshPermissions()
                         }
                     }
+                    .clickCursor()
                     Button("Open System Settings") {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
                             NSWorkspace.shared.open(url)
                         }
                     }
-                    Button("Refresh") { refreshPermissions() }
+                    .clickCursor()
+                    Button("Refresh") { refreshPermissions() }.clickCursor()
                 }
                 if !inputMonStatus {
                     Button("Hotkeys not responding? Request Input Monitoring") {
                         _ = CGRequestListenEventAccess()
                         refreshPermissions()
                     }
+                    .clickCursor()
                 }
                 Text("Microphone = hearing you. Accessibility = watching for your hotkey, pressing ⌘V for you, and reading window titles.")
                     .font(.caption).foregroundStyle(.secondary)
                 Button("Open Setup Assistant…") {
                     WindowRouter.shared.openOnboarding()
                 }
+                .clickCursor()
             }
 
             Section("Behavior") {
-                Toggle("Focus on my voice", isOn: $store.config.voiceIsolationEnabled)
+                Toggle("Focus on my voice", isOn: $store.config.voiceIsolationEnabled).clickCursor()
                 Text("Apple's on-device voice isolation: keys on the person speaking at the Mac and suppresses background noise and other voices. For even stronger isolation, pick “Voice Isolation” under Mic Mode in Control Center while dictating.")
                     .font(.caption).foregroundStyle(.secondary)
-                Toggle("Play sounds", isOn: $store.config.soundsEnabled)
+                Toggle("Play sounds", isOn: $store.config.soundsEnabled).clickCursor()
                 Toggle("Show bar at bottom of screen", isOn: Binding(
                     get: { store.config.showIdleIndicator },
                     set: { newValue in
@@ -174,6 +186,7 @@ struct SettingsView: View {
                         HUD.shared.applyIdleIndicatorSetting()
                     }
                 ))
+                .clickCursor()
                 Toggle("Launch at login", isOn: Binding(
                     get: { store.config.launchAtLogin },
                     set: { newValue in
@@ -189,7 +202,8 @@ struct SettingsView: View {
                         }
                     }
                 ))
-                Stepper("Hold threshold: \(store.config.holdThresholdMs) ms", value: $store.config.holdThresholdMs, in: 80...500, step: 20)
+                .clickCursor()
+                Stepper("Hold threshold: \(store.config.holdThresholdMs) ms", value: $store.config.holdThresholdMs, in: 80...500, step: 20).clickCursor()
                 Text("How long you must hold the key before recording starts (filters accidental taps).")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -199,6 +213,7 @@ struct SettingsView: View {
                     Prompts.ensurePromptModeFileExists()
                     NSWorkspace.shared.open(Paths.promptModeFile)
                 }
+                .clickCursor()
                 Text("The meta-prompt that turns your rambling into a well-engineered prompt. It's a text file — edit freely.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -214,6 +229,7 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(updateButtonDisabled)
+                .clickCursor()
 
                 if !updateStatusText.isEmpty {
                     Text(updateStatusText)
@@ -274,9 +290,11 @@ struct SettingsView: View {
                         fallback: target == .dictation ? .rightOption : .rightCommand
                     ))
                 }
+                .clickCursor()
                 Button("Custom…") { hotkeyCaptureTarget = target }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .clickCursor()
             }
         }
     }

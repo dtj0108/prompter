@@ -44,41 +44,33 @@ obfuscation or attempt to stop a fork from changing the gate.
 | Discovery | `<issuer>/.well-known/openid-configuration` |
 | JWKS | `<issuer>/.well-known/jwks.json` |
 
-### Why an HTTPS callback instead of a `prompter://` URL scheme
+### Why an HTTPS callback instead of a release `prompter://` URL scheme
 
 Any Mac app can claim the same custom URL scheme and intercept the redirect.
 Combined with the hosted server's current tolerance of the weak `plain` PKCE
 method (documented upstream gap), a scheme hijack could let a malicious app
-complete a stolen sign-in. A verified HTTPS callback (associated domain)
-routes the redirect only to the genuine, Developer-ID-signed Prompter.
-Ambitious client policy therefore requires exact HTTPS redirect URIs.
+observe a stolen authorization code. Prompter instead uses the macOS 26
+`ASWebAuthenticationSession.Callback.https(host:path:)` matcher: the exact
+HTTPS navigation is returned only to the active authentication session, while
+PKCE S256 binds the code to Prompter's in-memory verifier. This is an
+authentication-session callback, not a universal-link handoff, so Prompter
+does not claim the Ambitious website through Associated Domains. Ambitious
+client policy still requires an exact HTTPS redirect URI.
 
 ## One-time platform setup (owner + web repo)
 
-1. **AASA**: add Prompter to the existing Apple App Site Association file
-   served by the Ambitious web app (`apps/web/public/.well-known/
-   apple-app-site-association`), `webcredentials` service:
-   `"webcredentials": { "apps": ["F3FXXB2HL6.com.drew.prompter"] }`
-   (merge with existing entries; Team ID `F3FXXB2HL6`, bundle
-   `com.drew.prompter`).
-2. **Callback page**: static route at
+1. **Callback page**: static route at
    `/oauth/prompter/callback` on www.ambitious.social showing "You're
    signed in — return to Prompter." (ASWebAuthenticationSession intercepts
    the redirect before rendering in the normal case; the page is the
    fallback.) Middleware must allow it unauthenticated.
-3. **Entitlement**: the release-only `bundle/Prompter.release.entitlements` adds:
-   `com.apple.developer.associated-domains` =
-   `["webcredentials:www.ambitious.social"]`. Note: this entitlement
-   requires real Developer ID provisioning — verify the notarized release
-   workflow still signs correctly with it. `scripts/build-app.sh` selects this
-   entitlement only for a Developer ID identity; ad-hoc and self-signed builds
-   retain `bundle/Prompter.entitlements` without associated domains.
-
-   **TODO(owner review before merge):** confirm whether the Developer ID release
-   needs an embedded provisioning profile with Associated Domains enabled, add
-   that profile to the release workflow through the approved secret channel if
-   needed, and run signing + notarization once without publishing.
-4. **Registration** (after Ambitious activation): owner registers the
+   The fallback must never read, render, persist, or deliberately log query
+   parameters; OAuth codes and state belong only to the authentication session.
+2. **No Associated Domains entitlement**: HTTPS callback matching is performed
+   by `ASWebAuthenticationSession`, not by a universal-link launch. Keep both
+   release and local entitlements minimal; `webcredentials` is for shared
+   passwords and is not this callback mechanism.
+3. **Registration** (after Ambitious activation): owner registers the
    client in Supabase dashboard exactly per the table above and puts the
    issued `client_id` into Prompter as a constant (client IDs are public
    identifiers, safe to embed).
@@ -160,8 +152,8 @@ session.start()
 ## Local Prompter client for the canonical lab
 
 The macOS 26 SDK supports `ASWebAuthenticationSession.Callback.https(host:path:)`
-for an associated `webcredentials` domain and a custom-scheme callback; it does
-not provide a loopback HTTP listener. Prompter therefore uses
+and a custom-scheme callback, but Prompter does not provide a loopback HTTP
+listener. Prompter therefore uses
 `prompter-lab://oauth/callback` only inside `#if DEBUG`. Build a DEBUG app whose
 Info.plist registers that scheme:
 
@@ -202,7 +194,7 @@ are absent from release builds.
 
 ## Remaining owner activation decisions
 
-1. Approve the AASA + callback-page change on www.ambitious.social and the
-   associated-domains entitlement in the release signing.
+1. Approve and deploy the static callback-page change on
+   www.ambitious.social.
 2. Ambitious-side activation itself (separate checklist, separate
    approvals).

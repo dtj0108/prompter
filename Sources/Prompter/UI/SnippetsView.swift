@@ -16,6 +16,7 @@ struct SnippetsView: View {
                     Label("Add snippet", systemImage: "plus")
                 }
                 .keyboardShortcut("n", modifiers: .command)
+                .clickCursor()
             }
             .padding(12)
 
@@ -41,6 +42,7 @@ struct SnippetsView: View {
                             .buttonStyle(.borderless)
                             .foregroundStyle(.secondary)
                             .opacity(hovered ? 1 : 0)
+                            .clickCursor()
                             .help("Delete this snippet")
                         }
                     }

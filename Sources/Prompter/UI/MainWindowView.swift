@@ -200,6 +200,7 @@ struct HomeView: View {
                             Button("Open Setup Assistant") {
                                 WindowRouter.shared.openOnboarding()
                             }
+                            .clickCursor()
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -356,6 +357,7 @@ private struct HistoryRow: View {
                 }
                 .buttonStyle(.plain)
                 .opacity(hovered || copied ? 1 : 0)
+                .clickCursor()
                 .help("Copy")
                 Image(systemName: "chevron.down")
                     .font(.caption2.weight(.semibold))
@@ -389,6 +391,7 @@ private struct HistoryRow: View {
                 .fill(Color.secondary.opacity(hovered ? 0.1 : 0.07))
         )
         .contentShape(RoundedRectangle(cornerRadius: 10))
+        .clickCursor()
         .onTapGesture {
             withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
         }

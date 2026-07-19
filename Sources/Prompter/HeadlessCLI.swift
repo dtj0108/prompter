@@ -139,19 +139,24 @@ enum HeadlessCLI {
 #endif
 
         case "--render-onboarding":
+            // Known capture quirk: cacheDisplay mis-rasterizes stroked stadium
+            // shapes — Capsule borders (the free badge, HUD pill) grow stray
+            // end nubs in the PNG that do NOT exist in live rendering (verified
+            // via ImageRenderer, which draws them clean but can't render the
+            // AppKit-backed SecureField/TextEditor steps, so cacheDisplay stays).
             guard args.count >= 3 else {
-                FileHandle.standardError.write(Data("usage: Prompter --render-onboarding <png-path> [step]\n".utf8))
+                FileHandle.standardError.write(Data("usage: Prompter --render-onboarding <png-path> [step 0-10] [dark]\n".utf8))
                 return true
             }
             MainActor.assumeIsolated {
                 _ = NSApplication.shared
-                let step = args.count >= 4 ? (Int(args[3]) ?? 0) : 0
-                let content = OnboardingView(startStep: step)
+                let step = OnboardingStep(rawValue: args.count >= 4 ? (Int(args[3]) ?? 0) : 0) ?? .welcome
+                let dark = args.count >= 5 && args[4] == "dark"
+                let content = OnboardingView(startStep: step, renderOnly: true)
                     .environmentObject(ConfigStore.shared)
-                    .background(Color(nsColor: .windowBackgroundColor))
                 let host = NSHostingView(rootView: content)
-                host.frame = NSRect(x: 0, y: 0, width: 560, height: 540)
-                host.appearance = NSAppearance(named: .aqua)
+                host.frame = NSRect(x: 0, y: 0, width: 680, height: 640)
+                host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
                 host.layoutSubtreeIfNeeded()
                 guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
                     FileHandle.standardError.write(Data("failed to render Onboarding view\n".utf8))

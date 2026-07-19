@@ -20,6 +20,7 @@ struct DictionaryView: View {
                     Label("Add word", systemImage: "plus")
                 }
                 .keyboardShortcut("n", modifiers: .command)
+                .clickCursor()
             }
             .padding()
 
@@ -72,6 +73,7 @@ private struct DictRow: View {
                 }
                 .buttonStyle(.borderless)
                 .opacity(hovered ? 1 : 0)
+                .clickCursor()
                 .help("Delete this word")
             }
         }

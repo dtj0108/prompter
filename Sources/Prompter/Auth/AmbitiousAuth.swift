@@ -398,7 +398,10 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
         identity = nil
         activity = .idle
         errorMessage = message
-        WindowRouter.shared.openOnboarding(startStep: 0)
+        // Signed out means no app access: retire the main window and put the
+        // Ambitious sign-in screen up in its place.
+        WindowRouter.shared.closeMain()
+        WindowRouter.shared.openOnboarding(startStep: .signIn)
     }
 
     private func performSignIn(configuration: AmbitiousAuthConfiguration) async throws -> AmbitiousStoredSession {

@@ -43,6 +43,7 @@ struct PromptModeView: View {
                         Prompts.ensurePromptModeFileExists()
                         NSWorkspace.shared.open(Paths.promptModeFile)
                     }
+                    .clickCursor()
                 }
             }
             .padding(24)
@@ -90,5 +91,6 @@ private struct LevelCard: View {
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
+        .clickCursor()
     }
 }

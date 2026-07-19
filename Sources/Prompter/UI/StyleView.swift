@@ -75,6 +75,7 @@ struct StyleView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .help("Assign the active app to a writing style")
+                .clickCursor()
             }
         }
     }
@@ -96,6 +97,7 @@ struct StyleView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .clickCursor()
                 }
 
                 Button { addContext() } label: {
@@ -105,6 +107,7 @@ struct StyleView: View {
                         .padding(.bottom, 11)
                 }
                 .buttonStyle(.plain)
+                .clickCursor()
             }
             .padding(.horizontal, 1)
         }
@@ -128,6 +131,7 @@ struct StyleView: View {
             Toggle("Separate thoughts", isOn: $config.config.separateThoughts)
                 .toggleStyle(.switch)
                 .labelsHidden()
+                .clickCursor()
         }
         .padding(14)
         .background(Color.secondary.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
@@ -164,6 +168,7 @@ struct StyleView: View {
                 NSWorkspace.shared.open(Paths.promptModeFile)
             }
             .controlSize(.small)
+            .clickCursor()
         }
         .padding(14)
         .background(Color.blue.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
@@ -299,6 +304,7 @@ private struct ContextStylePage: View {
                 if context.id != "other" {
                     Button("Delete this context", role: .destructive, action: onDelete)
                         .controlSize(.small)
+                        .clickCursor()
                 }
             }
             .padding(.top, 10)
@@ -353,6 +359,7 @@ private struct ContextBanner: View {
                         .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
+                    .clickCursor()
                     .help("Add \(activeAppName) to \(context.name)")
                 }
             }
@@ -460,6 +467,7 @@ private struct ToneCard: View {
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
+        .clickCursor()
     }
 }
 

@@ -49,11 +49,13 @@ enum AmbitiousAuthGate {
 }
 
 enum AmbitiousRefreshFailureClassifier {
-    /// OAuth 2.0 defines token-endpoint `invalid_grant` as a 400 response. Keep
-    /// this deliberately narrow so infrastructure and client-configuration
-    /// errors can never strand a previously signed-in user.
+    /// OAuth 2.0 defines token-endpoint `invalid_grant` as a 400 response.
+    /// Current Supabase Auth returns `refresh_token_not_found` after its grant
+    /// revocation endpoint invalidates the token family. Keep the accepted set
+    /// deliberately narrow so infrastructure and client-configuration errors
+    /// can never strand a previously signed-in user.
     static func outcome(httpStatus: Int, oauthError: String?) -> AmbitiousRefreshOutcome {
-        httpStatus == 400 && oauthError == "invalid_grant"
+        httpStatus == 400 && ["invalid_grant", "refresh_token_not_found"].contains(oauthError)
             ? .definitiveRevocation
             : .transientFailure
     }

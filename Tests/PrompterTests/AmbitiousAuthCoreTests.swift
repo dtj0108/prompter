@@ -181,16 +181,22 @@ struct AmbitiousAuthGateTests {
         ) == .deferSignOut)
     }
 
-    @Test("Only OAuth 400 invalid_grant is definitive revocation")
+    @Test("Only known OAuth 400 token-family errors are definitive revocation")
     func refreshFailureClassification() {
         #expect(AmbitiousRefreshFailureClassifier.outcome(
             httpStatus: 400, oauthError: "invalid_grant"
+        ) == .definitiveRevocation)
+        #expect(AmbitiousRefreshFailureClassifier.outcome(
+            httpStatus: 400, oauthError: "refresh_token_not_found"
         ) == .definitiveRevocation)
         #expect(AmbitiousRefreshFailureClassifier.outcome(
             httpStatus: 400, oauthError: "invalid_client"
         ) == .transientFailure)
         #expect(AmbitiousRefreshFailureClassifier.outcome(
             httpStatus: 401, oauthError: "invalid_grant"
+        ) == .transientFailure)
+        #expect(AmbitiousRefreshFailureClassifier.outcome(
+            httpStatus: 401, oauthError: "refresh_token_not_found"
         ) == .transientFailure)
         #expect(AmbitiousRefreshFailureClassifier.outcome(
             httpStatus: 503, oauthError: nil

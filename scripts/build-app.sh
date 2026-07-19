@@ -43,8 +43,10 @@ if [[ $AUTH_LAB -eq 1 && "$IDENTITY" == Developer\ ID\ Application:* ]]; then
 fi
 
 BUILD_CONFIGURATION="release"
+BUNDLE_IDENTIFIER="com.drew.prompter"
 if [[ $AUTH_LAB -eq 1 ]]; then
   BUILD_CONFIGURATION="debug"
+  BUNDLE_IDENTIFIER="com.drew.prompter.auth-lab"
 fi
 
 echo "==> swift build -c $BUILD_CONFIGURATION"
@@ -59,6 +61,7 @@ cp bundle/Info.plist "$APP/Contents/Info.plist"
 if [[ $AUTH_LAB -eq 1 ]]; then
   # The custom callback exists only in a DEBUG binary and DEBUG bundle. Public
   # releases have no claimable custom URL scheme; they use verified HTTPS.
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_IDENTIFIER" "$APP/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$APP/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$APP/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string com.drew.prompter.ambitious-lab" "$APP/Contents/Info.plist"
@@ -90,7 +93,7 @@ fi
 SIGN_ARGS=(
   --force
   --sign "$IDENTITY"
-  --identifier com.drew.prompter
+  --identifier "$BUNDLE_IDENTIFIER"
   --entitlements "$ENTITLEMENTS"
 )
 if [[ "$IDENTITY" == Developer\ ID\ Application:* ]]; then

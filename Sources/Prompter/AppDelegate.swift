@@ -36,6 +36,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+#if DEBUG
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where AmbitiousDebugCallbackBroker.shared.handle(url) {
+            return
+        }
+    }
+#endif
+
     /// Main window normally — but if a required permission is missing (an app
     /// update resets TCC grants), reopen the setup assistant on the broken step
     /// so the user can re-grant instead of silently having dead hotkeys.

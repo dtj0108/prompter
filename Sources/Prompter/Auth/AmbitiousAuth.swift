@@ -86,6 +86,14 @@ private struct AmbitiousTokenResponse: Decodable {
 
 private struct AmbitiousOAuthErrorResponse: Decodable {
     let error: String?
+    let errorCode: String?
+
+    var code: String? { error ?? errorCode }
+
+    private enum CodingKeys: String, CodingKey {
+        case error
+        case errorCode = "error_code"
+    }
 }
 
 private struct AmbitiousUserInfo: Decodable {
@@ -129,6 +137,44 @@ private enum AmbitiousPendingSignOutReason: Equatable {
     case user
     case revoked
 }
+
+#if DEBUG
+/// The local lab uses a custom callback scheme, so opening the ordinary system
+/// browser makes the flow observable and reproducible without weakening the
+/// release build's verified-HTTPS ASWebAuthenticationSession boundary.
+@MainActor
+final class AmbitiousDebugCallbackBroker {
+    static let shared = AmbitiousDebugCallbackBroker()
+
+    private var continuation: CheckedContinuation<URL, Error>?
+
+    private init() {}
+
+    func open(_ authorizationURL: URL) async throws -> URL {
+        guard continuation == nil else {
+            throw AmbitiousAuthFlowError.browserCouldNotStart
+        }
+        return try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+            guard NSWorkspace.shared.open(authorizationURL) else {
+                self.continuation = nil
+                continuation.resume(throwing: AmbitiousAuthFlowError.browserCouldNotStart)
+                return
+            }
+        }
+    }
+
+    @discardableResult
+    func handle(_ callbackURL: URL) -> Bool {
+        guard callbackURL.scheme == "prompter-lab", let continuation else {
+            return false
+        }
+        self.continuation = nil
+        continuation.resume(returning: callbackURL)
+        return true
+    }
+}
+#endif
 
 enum AmbitiousAuthActivity: Equatable {
     case idle
@@ -252,6 +298,21 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
         refresh(force: true)
     }
 
+#if DEBUG
+    /// Synchronous acceptance hook for the disposable local OAuth lab. Public
+    /// builds never include this entry point.
+    func refreshNowForTesting() async -> Bool {
+        let configuration = AmbitiousAuthConfiguration.current
+        guard configuration.isActivated,
+              let session = Self.usableStoredSession() else { return false }
+        let result = await performRefresh(session: session, configuration: configuration)
+        await MainActor.run {
+            self.handleRefreshResult(result)
+        }
+        return await MainActor.run { self.isSignedIn }
+    }
+#endif
+
     func dictationDidBecomeIdle() {
         guard let reason = pendingSignOutReason,
               !DictationController.shared.hasInFlightDictation else { return }
@@ -364,7 +425,8 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
         guard let authorizationURL = components.url else { throw AmbitiousAuthFlowError.invalidDiscovery }
         let callbackURL = try await openBrowser(
             authorizationURL: authorizationURL,
-            callback: configuration.callback()
+            callback: configuration.callback(),
+            usesDebugCustomScheme: configuration.redirectURI.scheme == "prompter-lab"
         )
         let code = try validateCallback(
             callbackURL,
@@ -466,8 +528,8 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
         } catch AmbitiousAuthFlowError.tokenEndpoint(let status, let code) {
             // Deliberately narrow: invalid_client, other 4xx, 5xx, malformed
             // responses, validation errors, timeouts, and offline failures all
-            // preserve cached access. Only OAuth's exact 400 invalid_grant
-            // response means the user's grant is definitively gone.
+            // preserve cached access. Only the two exact HTTP 400 token-family
+            // revocation codes mean the user's grant is definitively gone.
             return AmbitiousRefreshFailureClassifier.outcome(httpStatus: status, oauthError: code) == .definitiveRevocation
                 ? .definitiveRevocation
                 : .transientFailure
@@ -542,7 +604,7 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
             let (data, response) = try await urlSession.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw AmbitiousAuthFlowError.network }
             guard (200..<300).contains(http.statusCode) else {
-                let code = (try? JSONDecoder().decode(AmbitiousOAuthErrorResponse.self, from: data))?.error
+                let code = (try? JSONDecoder().decode(AmbitiousOAuthErrorResponse.self, from: data))?.code
                 throw AmbitiousAuthFlowError.tokenEndpoint(status: http.statusCode, code: code)
             }
             guard let token = try? JSONDecoder().decode(AmbitiousTokenResponse.self, from: data) else {
@@ -558,9 +620,15 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
 
     private func openBrowser(
         authorizationURL: URL,
-        callback: ASWebAuthenticationSession.Callback
+        callback: ASWebAuthenticationSession.Callback,
+        usesDebugCustomScheme: Bool
     ) async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
+#if DEBUG
+        if usesDebugCustomScheme {
+            return try await AmbitiousDebugCallbackBroker.shared.open(authorizationURL)
+        }
+#endif
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
             DispatchQueue.main.async {
                 let session = ASWebAuthenticationSession(url: authorizationURL, callback: callback) { [weak self] url, error in
                     self?.webSession = nil

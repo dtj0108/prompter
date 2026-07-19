@@ -118,6 +118,26 @@ enum HeadlessCLI {
             }
             return true
 
+#if DEBUG
+        case "--test-ambitious-refresh":
+            let auth = AmbitiousAuthManager.shared
+            let result = HeadlessResultBox<Bool>()
+            Task { @MainActor in
+                result.set(await auth.refreshNowForTesting())
+            }
+            let deadline = Date().addingTimeInterval(35)
+            while result.get() == nil, Date() < deadline {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            }
+            if let isStillSignedIn = result.get() {
+                print(isStillSignedIn ? "SIGNED_IN" : "SIGNED_OUT")
+            } else {
+                exitCode = 1
+                FileHandle.standardError.write(Data("Ambitious refresh timed out.\n".utf8))
+            }
+            return true
+#endif
+
         case "--render-onboarding":
             guard args.count >= 3 else {
                 FileHandle.standardError.write(Data("usage: Prompter --render-onboarding <png-path> [step]\n".utf8))
@@ -302,3 +322,22 @@ enum HeadlessCLI {
         semaphore.wait()
     }
 }
+
+#if DEBUG
+private final class HeadlessResultBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value?
+
+    func set(_ value: Value) {
+        lock.lock()
+        self.value = value
+        lock.unlock()
+    }
+
+    func get() -> Value? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+#endif

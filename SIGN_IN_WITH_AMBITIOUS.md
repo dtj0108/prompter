@@ -147,7 +147,8 @@ session.start()
    in Settings forces the next refresh immediately. There are no auth network
    calls in the dictation hot path.
 3. **Revocation:** only an HTTP 400 token-endpoint refresh response whose OAuth
-   `error` is exactly `invalid_grant` is definitive revocation. Network errors,
+   `error` is exactly `invalid_grant` or Supabase's post-revocation
+   `refresh_token_not_found` is definitive revocation. Network errors,
    timeouts, malformed success responses, validation failures, 5xx responses,
    and every other OAuth/HTTP error are transient and preserve offline access. Revocation
    or user-requested sign-out waits for any recording/transcription/paste to
@@ -174,7 +175,17 @@ PROMPTER_AMBITIOUS_REDIRECT_URI=prompter-lab://oauth/callback \
 
 Register that exact redirect on the disposable local public client. Release
 compilation removes the environment override and custom callback code, and the
-ordinary release Info.plist contains no custom scheme.
+ordinary release Info.plist contains no custom scheme. The lab build uses the
+separate bundle identifier `com.drew.prompter.auth-lab` and Keychain service
+`com.drew.prompter.ambitious.auth-lab`, so LaunchServices callback routing and
+test credentials cannot collide with an installed release. It opens the normal
+system browser to make the server consent UI observable; macOS returns the
+custom-scheme callback to the DEBUG-only app delegate.
+
+For a deterministic refresh/revocation acceptance check, the DEBUG binary also
+provides `--test-ambitious-refresh`. It performs one immediate account refresh
+and prints only `SIGNED_IN` or `SIGNED_OUT`; the command and its supporting code
+are absent from release builds.
 
 ## Testing
 

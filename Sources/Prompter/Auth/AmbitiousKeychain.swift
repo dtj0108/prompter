@@ -7,7 +7,14 @@ enum AmbitiousKeychainError: Error {
 }
 
 enum AmbitiousKeychainStore {
-    static let service = "com.drew.prompter.ambitious"
+    static var service: String {
+#if DEBUG
+        if ProcessInfo.processInfo.environment["PROMPTER_AMBITIOUS_REDIRECT_URI"]?.hasPrefix("prompter-lab://") == true {
+            return "com.drew.prompter.ambitious.auth-lab"
+        }
+#endif
+        return "com.drew.prompter.ambitious"
+    }
     private static let account = "oauth-session-v1"
 
     static func loadSession() throws -> AmbitiousStoredSession? {

@@ -23,9 +23,7 @@ private struct AmbitiousAuthConfiguration {
 #endif
         return AmbitiousAuthConfiguration(
             issuer: URL(string: "https://ehplhuzlsxrhhpkqxeyc.supabase.co/auth/v1")!,
-            // TODO(release blocker): replace only after the production client is
-            // registered and every activation item in SIGN_IN_WITH_AMBITIOUS.md passes.
-            clientID: "",
+            clientID: "6f2eb6a1-e2b8-470f-a35d-0df05fbdd717",
             redirectURI: URL(string: "https://www.ambitious.social/oauth/prompter/callback")!
         )
     }

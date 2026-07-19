@@ -1,4 +1,4 @@
-# Sign in with Ambitious — Prompter integration plan
+# Sign in with Ambitious — Prompter integration
 
 Prompter is the first internal client of "Sign in with Ambitious" (Ambitious
 Social as an OAuth 2.1/OIDC identity provider). This doc is the
@@ -7,11 +7,9 @@ ambitious monorepo at `apps/web/SIGN_IN_WITH_AMBITIOUS.md` (activation
 checklist, security guarantees) and
 `apps/web/SIGN_IN_WITH_AMBITIOUS_CLIENT_GUIDE.md` (generic client guide).
 
-> **Status: not yet live.** The hosted OAuth server is still disabled in
-> production. Prompter's code can be built and tested today against the
-> local lab described in the server doc; production sign-in starts working
-> only after the owner runs the activation checklist and registers the
-> Prompter client.
+> **Status: live in production.** The hosted OAuth server, ES256 signer,
+> identity-only claims hook, consent UI, and manually registered Prompter
+> client are active. Dynamic registration remains disabled.
 
 ## What sign-in gives Prompter (and what it can't)
 
@@ -37,6 +35,7 @@ obfuscation or attempt to stop a fork from changing the gate.
 | Setting | Value |
 | --- | --- |
 | Client type | **Public** (`token_endpoint_auth_method=none`) — Prompter has no backend; there is no client secret anywhere |
+| Client ID | `6f2eb6a1-e2b8-470f-a35d-0df05fbdd717` |
 | Flow | Authorization code + PKCE **S256** (never `plain`) |
 | Scopes | `openid email` |
 | Redirect URI | `https://www.ambitious.social/oauth/prompter/callback` |
@@ -70,10 +69,9 @@ client policy still requires an exact HTTPS redirect URI.
    by `ASWebAuthenticationSession`, not by a universal-link launch. Keep both
    release and local entitlements minimal; `webcredentials` is for shared
    passwords and is not this callback mechanism.
-3. **Registration** (after Ambitious activation): owner registers the
-   client in Supabase dashboard exactly per the table above and puts the
-   issued `client_id` into Prompter as a constant (client IDs are public
-   identifiers, safe to embed).
+3. **Registration**: the Prompter client is manually registered exactly per
+   the table above. Its public `client_id` is embedded in the release binary;
+   no client secret exists.
 
 ## Implemented client design (this repo)
 
@@ -192,9 +190,10 @@ are absent from release builds.
   (PKCE, JWT checks) in pure functions with unit tests in
   `Tests/PrompterTests`.
 
-## Remaining owner activation decisions
+## Production activation record
 
-1. Approve and deploy the static callback-page change on
-   www.ambitious.social.
-2. Ambitious-side activation itself (separate checklist, separate
-   approvals).
+The callback page, hosted OAuth server, ES256 JWKS, identity-only claims hook,
+and public Prompter registration are active. Production acceptance includes a
+real authorization-code/PKCE-S256 sign-in, Connected Apps grant visibility,
+revocation, and refresh-after-revoke behavior. Supabase's hosted discovery also
+advertises `plain`; Prompter never uses it and always generates S256.

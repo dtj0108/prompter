@@ -81,4 +81,11 @@ final class WindowRouter: NSObject, NSWindowDelegate {
     func closeOnboarding() {
         windows["onboarding"]?.close()
     }
+
+    /// The OAuth round-trip leaves the browser frontmost. Called when sign-in
+    /// completes so the assistant comes back over it and setup continues.
+    func focusOnboarding() {
+        NSApp.activate(ignoringOtherApps: true)
+        windows["onboarding"]?.makeKeyAndOrderFront(nil)
+    }
 }

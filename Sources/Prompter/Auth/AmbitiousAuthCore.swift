@@ -141,6 +141,27 @@ enum AmbitiousOIDCEndpointPolicy {
     }
 }
 
+/// Builds the URL the sign-in browser session opens. With a branded start URL
+/// (release), the flow enters through www.ambitious.social — a static route
+/// that forwards this exact query to the hosted authorize endpoint — so the
+/// user-visible sign-in domain is Ambitious everywhere and the Supabase issuer
+/// host never appears in the consent sheet or address bar. Without one (the
+/// DEBUG lab), the discovery authorize endpoint is opened directly. Only the
+/// entry hop changes; PKCE, state, nonce, and the token exchange endpoints are
+/// identical in both shapes.
+enum AmbitiousAuthorizationEntry {
+    static func url(
+        brandedStart: URL?,
+        authorizationEndpoint: URL,
+        queryItems: [URLQueryItem]
+    ) -> URL? {
+        let base = brandedStart ?? authorizationEndpoint
+        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return nil }
+        components.queryItems = (components.queryItems ?? []) + queryItems
+        return components.url
+    }
+}
+
 struct AmbitiousIDTokenClaims: Equatable {
     let issuer: String
     let subject: String

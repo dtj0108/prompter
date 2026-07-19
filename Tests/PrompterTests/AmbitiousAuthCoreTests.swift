@@ -306,3 +306,50 @@ private struct JWTFixture {
         Base64URL.encode(try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))
     }
 }
+
+@Suite("Ambitious authorization entry")
+struct AmbitiousAuthorizationEntryTests {
+    private let authorizeEndpoint = URL(string: "https://issuer.example/auth/v1/oauth/authorize")!
+    private let query = [
+        URLQueryItem(name: "client_id", value: "client-1"),
+        URLQueryItem(name: "redirect_uri", value: "https://www.ambitious.social/oauth/prompter/callback"),
+        URLQueryItem(name: "state", value: "state~value_-"),
+    ]
+
+    @Test("Branded start fronts the flow and carries the exact query")
+    func brandedEntry() throws {
+        let url = try #require(AmbitiousAuthorizationEntry.url(
+            brandedStart: URL(string: "https://www.ambitious.social/oauth/prompter/start")!,
+            authorizationEndpoint: authorizeEndpoint,
+            queryItems: query
+        ))
+        #expect(url.host == "www.ambitious.social")
+        #expect(url.path == "/oauth/prompter/start")
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        #expect(components.queryItems == query)
+    }
+
+    @Test("Without a branded start the authorize endpoint is opened directly")
+    func directEntry() throws {
+        let url = try #require(AmbitiousAuthorizationEntry.url(
+            brandedStart: nil,
+            authorizationEndpoint: authorizeEndpoint,
+            queryItems: query
+        ))
+        #expect(url.host == "issuer.example")
+        #expect(url.path == "/auth/v1/oauth/authorize")
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        #expect(components.queryItems == query)
+    }
+
+    @Test("Existing authorize-endpoint query items are preserved ahead of ours")
+    func endpointQueryPreserved() throws {
+        let url = try #require(AmbitiousAuthorizationEntry.url(
+            brandedStart: nil,
+            authorizationEndpoint: URL(string: "http://127.0.0.1:54321/auth/v1/oauth/authorize?tenant=lab")!,
+            queryItems: query
+        ))
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        #expect(components.queryItems == [URLQueryItem(name: "tenant", value: "lab")] + query)
+    }
+}

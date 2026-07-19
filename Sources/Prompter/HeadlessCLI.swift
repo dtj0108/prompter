@@ -11,6 +11,15 @@ enum HeadlessCLI {
         let args = CommandLine.arguments
         guard args.count >= 2 else { return false }
 
+        // Headless runs must never block on Keychain consent UI: a dev/CI
+        // binary signed differently from the installed app (ad-hoc vs
+        // Developer ID) that touches the app's Ambitious session item makes
+        // macOS raise a hidden approval prompt, hanging renders and
+        // --transcribe forever. Deprecated, but daemon-style UI suppression
+        // has no modern replacement; the query then fails fast and every
+        // caller already treats that as signed-out.
+        SecKeychainSetUserInteractionAllowed(false)
+
         if ["--transcribe", "--transcribe-openrouter"].contains(args[1]),
            !AmbitiousAuthManager.hasUsableCachedIdentity() {
             exitCode = 3

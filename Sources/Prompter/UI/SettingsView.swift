@@ -152,9 +152,7 @@ struct SettingsView: View {
                     }
                     .clickCursor()
                     Button("Open System Settings") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                            NSWorkspace.shared.open(url)
-                        }
+                        SystemSettingsPrivacyPane.accessibility.open()
                     }
                     .clickCursor()
                     Button("Refresh") { refreshPermissions() }.clickCursor()

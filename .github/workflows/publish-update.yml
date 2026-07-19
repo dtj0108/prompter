@@ -109,6 +109,24 @@ jobs:
             '{version: $version, build: $build, sha256: $sha256, notes: $notes}' \
             > dist/update.json
 
+      - name: Verify packaged release
+        run: |
+          VERIFY_DIR="$RUNNER_TEMP/prompter-release-verify"
+          test ! -e "$VERIFY_DIR"
+          mkdir -p "$VERIFY_DIR"
+          ditto -x -k dist/Prompter.zip "$VERIFY_DIR"
+
+          APP="$VERIFY_DIR/Prompter.app"
+          codesign --verify --deep --strict --verbose=4 "$APP"
+          SIGNED_ENTITLEMENTS="$VERIFY_DIR/signed-entitlements.plist"
+          codesign -d --entitlements :- "$APP" > "$SIGNED_ENTITLEMENTS"
+          /usr/libexec/PlistBuddy \
+            -c "Print :com.apple.developer.associated-domains" \
+            "$SIGNED_ENTITLEMENTS" \
+            | grep -Fqx "    webcredentials:www.ambitious.social"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

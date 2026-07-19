@@ -62,6 +62,34 @@ jobs:
           fi
           echo "SIGNING_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
 
+          SIGNING_CERT_SHA256="$(
+            security find-certificate -c "$SIGNING_IDENTITY" -p "$KEYCHAIN_PATH" \
+              | openssl x509 -outform der \
+              | shasum -a 256 \
+              | awk '{print $1}'
+          )"
+          if [[ ! "$SIGNING_CERT_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Could not fingerprint the imported Developer ID certificate." >&2
+            exit 1
+          fi
+          echo "SIGNING_CERT_SHA256=$SIGNING_CERT_SHA256" >> "$GITHUB_ENV"
+
+      - name: Create Developer ID provisioning profile
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          PROFILE_PATH="$RUNNER_TEMP/Prompter.provisionprofile"
+          node scripts/create-apple-developer-id-profile.mjs --output "$PROFILE_PATH"
+
+          PROFILE_PLIST="$RUNNER_TEMP/Prompter-profile.plist"
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$PROFILE_PLIST")" = "F3FXXB2HL6.com.drew.prompter"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.team-identifier' "$PROFILE_PLIST")" = "F3FXXB2HL6"
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.associated-domains' "$PROFILE_PLIST" >/dev/null
+          echo "PROVISIONING_PROFILE=$PROFILE_PATH" >> "$GITHUB_ENV"
+
       - name: Build application
         env:
           UPDATE_REPOSITORY: ${{ github.repository }}
@@ -72,6 +100,7 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           ./scripts/build-app.sh \
             --identity "$SIGNING_IDENTITY" \
+            --provisioning-profile "$PROVISIONING_PROFILE" \
             --version "$VERSION" \
             --build "$BUILD_NUMBER" \
             --update-repository "$UPDATE_REPOSITORY"
@@ -117,6 +146,11 @@ jobs:
           ditto -x -k dist/Prompter.zip "$VERIFY_DIR"
 
           APP="$VERIFY_DIR/Prompter.app"
+          test -f "$APP/Contents/embedded.provisionprofile"
+          EMBEDDED_PROFILE="$VERIFY_DIR/embedded-profile.plist"
+          security cms -D -i "$APP/Contents/embedded.provisionprofile" > "$EMBEDDED_PROFILE"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$EMBEDDED_PROFILE")" = "F3FXXB2HL6.com.drew.prompter"
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.associated-domains' "$EMBEDDED_PROFILE" >/dev/null
           codesign --verify --deep --strict --verbose=4 "$APP"
           SIGNED_ENTITLEMENTS="$VERIFY_DIR/signed-entitlements.plist"
           codesign -d --entitlements :- "$APP" > "$SIGNED_ENTITLEMENTS"

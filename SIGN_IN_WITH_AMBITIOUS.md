@@ -66,8 +66,9 @@ requires an exact HTTPS redirect URI.
    fallback.) Middleware must allow it unauthenticated.
    The fallback must never read, render, persist, or deliberately log query
    parameters; OAuth codes and state belong only to the authentication session.
-2. **Associated Domains**: both app entitlements contain
-   `webcredentials:www.ambitious.social`, and the site's
+2. **Associated Domains**: the Developer ID release entitlement contains
+   `webcredentials:www.ambitious.social`, the signed app embeds a Developer ID
+   provisioning profile authorizing that capability, and the site's
    `/.well-known/apple-app-site-association` lists
    `F3FXXB2HL6.com.drew.prompter` under `webcredentials.apps`. Without this
    two-sided association, macOS cancels the HTTPS authentication session

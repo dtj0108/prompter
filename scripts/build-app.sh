@@ -24,6 +24,7 @@ VERSION=""
 BUILD_NUMBER=""
 UPDATE_REPOSITORY=""
 AUTH_LAB=0
+PROVISIONING_PROFILE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --identity) IDENTITY="$2"; shift 2 ;;
@@ -32,6 +33,7 @@ while [[ $# -gt 0 ]]; do
     --version) VERSION="$2"; shift 2 ;;
     --build) BUILD_NUMBER="$2"; shift 2 ;;
     --update-repository) UPDATE_REPOSITORY="$2"; shift 2 ;;
+    --provisioning-profile) PROVISIONING_PROFILE="$2"; shift 2 ;;
     --auth-lab) AUTH_LAB=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -40,6 +42,13 @@ done
 if [[ $AUTH_LAB -eq 1 && "$IDENTITY" == Developer\ ID\ Application:* ]]; then
   echo "--auth-lab is development-only and cannot use a release signing identity" >&2
   exit 2
+fi
+
+if [[ "$IDENTITY" == Developer\ ID\ Application:* ]]; then
+  if [[ -z "$PROVISIONING_PROFILE" || ! -f "$PROVISIONING_PROFILE" ]]; then
+    echo "Developer ID releases require an Associated Domains provisioning profile." >&2
+    exit 2
+  fi
 fi
 
 BUILD_CONFIGURATION="release"
@@ -57,6 +66,21 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp ".build/$BUILD_CONFIGURATION/Prompter" "$APP/Contents/MacOS/Prompter"
 cp bundle/Info.plist "$APP/Contents/Info.plist"
+
+if [[ -n "$PROVISIONING_PROFILE" ]]; then
+  PROFILE_PLIST="$(mktemp)"
+  security cms -D -i "$PROVISIONING_PROFILE" > "$PROFILE_PLIST"
+  PROFILE_APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$PROFILE_PLIST")"
+  PROFILE_TEAM_ID="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.team-identifier' "$PROFILE_PLIST")"
+  /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.associated-domains' "$PROFILE_PLIST" >/dev/null
+  if [[ "$PROFILE_APP_ID" != "F3FXXB2HL6.com.drew.prompter" || "$PROFILE_TEAM_ID" != "F3FXXB2HL6" ]]; then
+    echo "Provisioning profile does not authorize the production Prompter app." >&2
+    rm -f "$PROFILE_PLIST"
+    exit 2
+  fi
+  rm -f "$PROFILE_PLIST"
+  cp "$PROVISIONING_PROFILE" "$APP/Contents/embedded.provisionprofile"
+fi
 
 if [[ $AUTH_LAB -eq 1 ]]; then
   # The custom callback exists only in a DEBUG binary and DEBUG bundle. Public

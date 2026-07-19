@@ -118,11 +118,12 @@ The release workflow requires these GitHub Actions secrets:
 
 - `MACOS_CERTIFICATE` — base64-encoded Developer ID Application `.p12`
 - `MACOS_CERTIFICATE_PASSWORD` — password used when exporting the `.p12`
+- `MACOS_PROVISIONING_PROFILE` — base64-encoded Developer ID provisioning profile for `com.drew.prompter`, including Associated Domains and the same Developer ID certificate
 - `APPLE_API_KEY` — contents of the App Store Connect team API private key (`.p8`)
 - `APPLE_API_KEY_ID` — App Store Connect team API key ID
 - `APPLE_API_ISSUER` — App Store Connect API issuer ID
 
-Keep the signing certificate and bundle identifier stable across releases. Changing either one causes macOS to treat the update as a different app and request permissions again.
+Keep the signing certificate and bundle identifier stable across releases. Changing either one causes macOS to treat the update as a different app and request permissions again. Renew and replace `MACOS_PROVISIONING_PROFILE` before its expiration; the release workflow rejects expired profiles and profiles that do not contain the imported signing certificate.
 
 ## License
 

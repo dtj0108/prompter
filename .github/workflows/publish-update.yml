@@ -19,12 +19,14 @@ jobs:
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_PROVISIONING_PROFILE: ${{ secrets.MACOS_PROVISIONING_PROFILE }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           : "${MACOS_CERTIFICATE:?Missing MACOS_CERTIFICATE GitHub secret}"
           : "${MACOS_CERTIFICATE_PASSWORD:?Missing MACOS_CERTIFICATE_PASSWORD GitHub secret}"
+          : "${MACOS_PROVISIONING_PROFILE:?Missing MACOS_PROVISIONING_PROFILE GitHub secret}"
           : "${APPLE_API_KEY:?Missing APPLE_API_KEY GitHub secret}"
           : "${APPLE_API_KEY_ID:?Missing APPLE_API_KEY_ID GitHub secret}"
           : "${APPLE_API_ISSUER:?Missing APPLE_API_ISSUER GitHub secret}"
@@ -74,20 +76,20 @@ jobs:
           fi
           echo "SIGNING_CERT_SHA256=$SIGNING_CERT_SHA256" >> "$GITHUB_ENV"
 
-      - name: Create Developer ID provisioning profile
+      - name: Verify Developer ID provisioning profile
         env:
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          MACOS_PROVISIONING_PROFILE: ${{ secrets.MACOS_PROVISIONING_PROFILE }}
         run: |
           PROFILE_PATH="$RUNNER_TEMP/Prompter.provisionprofile"
-          node scripts/create-apple-developer-id-profile.mjs --output "$PROFILE_PATH"
+          printf '%s' "$MACOS_PROVISIONING_PROFILE" | base64 --decode > "$PROFILE_PATH"
+          chmod 600 "$PROFILE_PATH"
 
           PROFILE_PLIST="$RUNNER_TEMP/Prompter-profile.plist"
-          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+          openssl smime -verify -inform der -noverify -in "$PROFILE_PATH" -out "$PROFILE_PLIST"
           test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$PROFILE_PLIST")" = "F3FXXB2HL6.com.drew.prompter"
           test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.team-identifier' "$PROFILE_PLIST")" = "F3FXXB2HL6"
           /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.associated-domains' "$PROFILE_PLIST" >/dev/null
+          python3 -c 'import datetime, hashlib, plistlib, sys; p=plistlib.load(open(sys.argv[1], "rb")); expected=sys.argv[2].lower(); assert any(hashlib.sha256(c).hexdigest() == expected for c in p["DeveloperCertificates"]), "profile does not include the imported signing certificate"; assert p["ExpirationDate"] > datetime.datetime.now(), "profile is expired"' "$PROFILE_PLIST" "$SIGNING_CERT_SHA256"
           echo "PROVISIONING_PROFILE=$PROFILE_PATH" >> "$GITHUB_ENV"
 
       - name: Build application
@@ -148,9 +150,11 @@ jobs:
           APP="$VERIFY_DIR/Prompter.app"
           test -f "$APP/Contents/embedded.provisionprofile"
           EMBEDDED_PROFILE="$VERIFY_DIR/embedded-profile.plist"
-          security cms -D -i "$APP/Contents/embedded.provisionprofile" > "$EMBEDDED_PROFILE"
+          openssl smime -verify -inform der -noverify -in "$APP/Contents/embedded.provisionprofile" -out "$EMBEDDED_PROFILE"
           test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$EMBEDDED_PROFILE")" = "F3FXXB2HL6.com.drew.prompter"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.team-identifier' "$EMBEDDED_PROFILE")" = "F3FXXB2HL6"
           /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.associated-domains' "$EMBEDDED_PROFILE" >/dev/null
+          python3 -c 'import hashlib, plistlib, sys; p=plistlib.load(open(sys.argv[1], "rb")); expected=sys.argv[2].lower(); assert any(hashlib.sha256(c).hexdigest() == expected for c in p["DeveloperCertificates"]), "embedded profile does not include the imported signing certificate"' "$EMBEDDED_PROFILE" "$SIGNING_CERT_SHA256"
           codesign --verify --deep --strict --verbose=4 "$APP"
           SIGNED_ENTITLEMENTS="$VERIFY_DIR/signed-entitlements.plist"
           codesign -d --entitlements :- "$APP" > "$SIGNED_ENTITLEMENTS"

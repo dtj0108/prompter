@@ -69,7 +69,7 @@ cp bundle/Info.plist "$APP/Contents/Info.plist"
 
 if [[ -n "$PROVISIONING_PROFILE" ]]; then
   PROFILE_PLIST="$(mktemp)"
-  security cms -D -i "$PROVISIONING_PROFILE" > "$PROFILE_PLIST"
+  openssl smime -verify -inform der -noverify -in "$PROVISIONING_PROFILE" -out "$PROFILE_PLIST"
   PROFILE_APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$PROFILE_PLIST")"
   PROFILE_TEAM_ID="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.team-identifier' "$PROFILE_PLIST")"
   /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.associated-domains' "$PROFILE_PLIST" >/dev/null

@@ -90,10 +90,55 @@ enum AmbitiousJWTError: Error, Equatable {
     case invalidSignature
     case wrongIssuer
     case wrongAudience
+    case wrongAuthorizedParty
     case expired
     case notYetValid
     case badNonce
     case missingSubject
+}
+
+/// OIDC discovery is fetched from a pinned issuer, so every endpoint it returns
+/// must stay on that issuer's origin and beneath its path. This prevents a
+/// compromised or misconfigured document from sending codes or bearer tokens
+/// to an unrelated HTTPS host.
+enum AmbitiousOIDCEndpointPolicy {
+    static func allows(
+        _ endpoint: URL,
+        issuer: URL,
+        allowLoopbackHTTP: Bool = false
+    ) -> Bool {
+        guard endpoint.user == nil,
+              endpoint.password == nil,
+              endpoint.query == nil,
+              endpoint.fragment == nil,
+              endpoint.host?.lowercased() == issuer.host?.lowercased(),
+              effectivePort(endpoint) == effectivePort(issuer) else { return false }
+
+        let scheme = endpoint.scheme?.lowercased()
+        let issuerScheme = issuer.scheme?.lowercased()
+        guard scheme == issuerScheme else { return false }
+        if scheme != "https" {
+            let loopbackHosts = ["127.0.0.1", "localhost"]
+            guard allowLoopbackHTTP,
+                  scheme == "http",
+                  loopbackHosts.contains(endpoint.host?.lowercased() ?? ""),
+                  loopbackHosts.contains(issuer.host?.lowercased() ?? "") else { return false }
+        }
+
+        let issuerPath = issuer.path.hasSuffix("/")
+            ? String(issuer.path.dropLast())
+            : issuer.path
+        return !issuerPath.isEmpty && endpoint.path.hasPrefix(issuerPath + "/")
+    }
+
+    private static func effectivePort(_ url: URL) -> Int? {
+        if let port = url.port { return port }
+        switch url.scheme?.lowercased() {
+        case "https": return 443
+        case "http": return 80
+        default: return nil
+        }
+    }
 }
 
 struct AmbitiousIDTokenClaims: Equatable {
@@ -185,6 +230,12 @@ enum AmbitiousJWTValidator {
             throw AmbitiousJWTError.wrongAudience
         }
         guard audiences.contains(clientID) else { throw AmbitiousJWTError.wrongAudience }
+        let authorizedParty = payload["azp"] as? String
+        if audiences.count > 1 || payload.keys.contains("azp") {
+            guard authorizedParty == clientID else {
+                throw AmbitiousJWTError.wrongAuthorizedParty
+            }
+        }
 
         guard let exp = numericDate(payload["exp"]) else { throw AmbitiousJWTError.expired }
         guard exp.timeIntervalSince(now) >= -clockSkew else { throw AmbitiousJWTError.expired }

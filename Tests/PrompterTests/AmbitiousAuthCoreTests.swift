@@ -68,6 +68,27 @@ struct AmbitiousJWTValidatorTests {
         }
     }
 
+    @Test("Multiple audiences require this client as authorized party")
+    func multipleAudiencesRequireAuthorizedParty() throws {
+        let fixture = try JWTFixture()
+        var claims = payload()
+        claims.removeValue(forKey: "azp")
+        #expect(throws: AmbitiousJWTError.wrongAuthorizedParty) {
+            try AmbitiousJWTValidator.validate(
+                try fixture.token(payload: claims), jwks: fixture.jwks,
+                issuer: issuer, clientID: clientID, nonce: nonce, now: now
+            )
+        }
+
+        claims["azp"] = "some-other-client"
+        #expect(throws: AmbitiousJWTError.wrongAuthorizedParty) {
+            try AmbitiousJWTValidator.validate(
+                try fixture.token(payload: claims), jwks: fixture.jwks,
+                issuer: issuer, clientID: clientID, nonce: nonce, now: now
+            )
+        }
+    }
+
     @Test("Expired token")
     func expiredToken() throws {
         let fixture = try JWTFixture()
@@ -135,12 +156,57 @@ struct AmbitiousJWTValidatorTests {
             "iss": issuer,
             "sub": "user-fixture-1",
             "aud": [clientID, "another-approved-audience"],
+            "azp": clientID,
             "exp": now.timeIntervalSince1970 + 600,
             "iat": now.timeIntervalSince1970 - 5,
             "nonce": nonce,
             "email": "person@example.com",
             "email_verified": true,
         ]
+    }
+}
+
+@Suite("Ambitious OIDC endpoint policy")
+struct AmbitiousOIDCEndpointPolicyTests {
+    private let issuer = URL(string: "https://issuer.example/auth/v1")!
+
+    @Test("Allows only clean endpoints under the pinned HTTPS issuer")
+    func pinnedIssuerOrigin() {
+        #expect(AmbitiousOIDCEndpointPolicy.allows(
+            URL(string: "https://issuer.example/auth/v1/oauth/token")!, issuer: issuer
+        ))
+        #expect(!AmbitiousOIDCEndpointPolicy.allows(
+            URL(string: "https://attacker.example/auth/v1/oauth/token")!, issuer: issuer
+        ))
+        #expect(!AmbitiousOIDCEndpointPolicy.allows(
+            URL(string: "https://issuer.example/other/token")!, issuer: issuer
+        ))
+        #expect(!AmbitiousOIDCEndpointPolicy.allows(
+            URL(string: "https://issuer.example/auth/v1/oauth/token?forward=1")!, issuer: issuer
+        ))
+        #expect(!AmbitiousOIDCEndpointPolicy.allows(
+            URL(string: "http://issuer.example/auth/v1/oauth/token")!, issuer: issuer
+        ))
+    }
+
+    @Test("Debug loopback HTTP still requires the exact issuer origin")
+    func debugLoopback() {
+        let loopbackIssuer = URL(string: "http://127.0.0.1:54321/auth/v1")!
+        #expect(AmbitiousOIDCEndpointPolicy.allows(
+            URL(string: "http://127.0.0.1:54321/auth/v1/oauth/token")!,
+            issuer: loopbackIssuer,
+            allowLoopbackHTTP: true
+        ))
+        #expect(!AmbitiousOIDCEndpointPolicy.allows(
+            URL(string: "http://localhost:54321/auth/v1/oauth/token")!,
+            issuer: loopbackIssuer,
+            allowLoopbackHTTP: true
+        ))
+        #expect(!AmbitiousOIDCEndpointPolicy.allows(
+            URL(string: "http://127.0.0.1:54322/auth/v1/oauth/token")!,
+            issuer: loopbackIssuer,
+            allowLoopbackHTTP: true
+        ))
     }
 }
 

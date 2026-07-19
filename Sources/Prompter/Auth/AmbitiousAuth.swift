@@ -42,14 +42,14 @@ private struct AmbitiousAuthConfiguration {
     }
 
     func allowsEndpoint(_ url: URL) -> Bool {
-        if url.scheme == "https" { return true }
 #if DEBUG
-        let loopbackHosts = ["127.0.0.1", "localhost"]
-        return url.scheme == "http"
-            && loopbackHosts.contains(issuer.host ?? "")
-            && loopbackHosts.contains(url.host ?? "")
+        return AmbitiousOIDCEndpointPolicy.allows(
+            url,
+            issuer: issuer,
+            allowLoopbackHTTP: true
+        )
 #else
-        return false
+        return AmbitiousOIDCEndpointPolicy.allows(url, issuer: issuer)
 #endif
     }
 }
@@ -60,6 +60,9 @@ private struct AmbitiousDiscovery: Decodable {
     let tokenEndpoint: URL
     let userInfoEndpoint: URL
     let jwksURI: URL
+    let responseTypesSupported: [String]
+    let codeChallengeMethodsSupported: [String]
+    let idTokenSigningAlgValuesSupported: [String]
 
     private enum CodingKeys: String, CodingKey {
         case issuer
@@ -67,6 +70,9 @@ private struct AmbitiousDiscovery: Decodable {
         case tokenEndpoint = "token_endpoint"
         case userInfoEndpoint = "userinfo_endpoint"
         case jwksURI = "jwks_uri"
+        case responseTypesSupported = "response_types_supported"
+        case codeChallengeMethodsSupported = "code_challenge_methods_supported"
+        case idTokenSigningAlgValuesSupported = "id_token_signing_alg_values_supported"
     }
 }
 
@@ -548,7 +554,10 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
               configuration.allowsEndpoint(discovery.authorizationEndpoint),
               configuration.allowsEndpoint(discovery.tokenEndpoint),
               configuration.allowsEndpoint(discovery.userInfoEndpoint),
-              configuration.allowsEndpoint(discovery.jwksURI) else {
+              configuration.allowsEndpoint(discovery.jwksURI),
+              discovery.responseTypesSupported.contains("code"),
+              discovery.codeChallengeMethodsSupported.contains("S256"),
+              discovery.idTokenSigningAlgValuesSupported.contains("ES256") else {
             throw AmbitiousAuthFlowError.invalidDiscovery
         }
         return discovery

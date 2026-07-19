@@ -82,7 +82,6 @@ async function createBundleId() {
 
 async function ensureAssociatedDomainsCapability(bundleIdId) {
   const url = apiUrl(`/v1/bundleIds/${encodeURIComponent(bundleIdId)}/bundleIdCapabilities`)
-  url.searchParams.set('limit', '200')
   const response = await request(url)
   if (
     response.data.some(

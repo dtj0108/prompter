@@ -52,9 +52,10 @@ observe a stolen authorization code. Prompter instead uses the macOS 26
 `ASWebAuthenticationSession.Callback.https(host:path:)` matcher: the exact
 HTTPS navigation is returned only to the active authentication session, while
 PKCE S256 binds the code to Prompter's in-memory verifier. This is an
-authentication-session callback, not a universal-link handoff, so Prompter
-does not claim the Ambitious website through Associated Domains. Ambitious
-client policy still requires an exact HTTPS redirect URI.
+authentication-session callback, not a universal-link handoff. Apple still
+requires the callback host to associate the app through the
+`webcredentials` Associated Domains service. Ambitious client policy also
+requires an exact HTTPS redirect URI.
 
 ## One-time platform setup (owner + web repo)
 
@@ -65,10 +66,12 @@ client policy still requires an exact HTTPS redirect URI.
    fallback.) Middleware must allow it unauthenticated.
    The fallback must never read, render, persist, or deliberately log query
    parameters; OAuth codes and state belong only to the authentication session.
-2. **No Associated Domains entitlement**: HTTPS callback matching is performed
-   by `ASWebAuthenticationSession`, not by a universal-link launch. Keep both
-   release and local entitlements minimal; `webcredentials` is for shared
-   passwords and is not this callback mechanism.
+2. **Associated Domains**: both app entitlements contain
+   `webcredentials:www.ambitious.social`, and the site's
+   `/.well-known/apple-app-site-association` lists
+   `F3FXXB2HL6.com.drew.prompter` under `webcredentials.apps`. Without this
+   two-sided association, macOS cancels the HTTPS authentication session
+   before opening the system browser.
 3. **Registration**: the Prompter client is manually registered exactly per
    the table above. Its public `client_id` is embedded in the release binary;
    no client secret exists.

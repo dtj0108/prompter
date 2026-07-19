@@ -103,6 +103,21 @@ fi
 codesign "${SIGN_ARGS[@]}" "$APP"
 codesign --verify --strict --verbose=2 "$APP"
 
+if [[ "$IDENTITY" == Developer\ ID\ Application:* ]]; then
+  SIGNED_ENTITLEMENTS="$(mktemp)"
+  trap 'rm -f "$SIGNED_ENTITLEMENTS"' EXIT
+  codesign -d --entitlements :- "$APP" > "$SIGNED_ENTITLEMENTS"
+  if ! /usr/libexec/PlistBuddy \
+    -c "Print :com.apple.developer.associated-domains" \
+    "$SIGNED_ENTITLEMENTS" \
+    | grep -Fqx "    webcredentials:www.ambitious.social"; then
+    echo "Release signature is missing the Ambitious associated domain." >&2
+    exit 1
+  fi
+  rm -f "$SIGNED_ENTITLEMENTS"
+  trap - EXIT
+fi
+
 echo "Built $APP"
 
 if [[ $INSTALL -eq 1 ]]; then

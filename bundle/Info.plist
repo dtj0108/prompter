@@ -5,9 +5,9 @@
 	<key>CFBundleIdentifier</key>
 	<string>com.drew.prompter</string>
 	<key>CFBundleName</key>
-	<string>Prompter</string>
+	<string>Ambitious Prompts</string>
 	<key>CFBundleDisplayName</key>
-	<string>Prompter</string>
+	<string>Ambitious Prompts</string>
 	<key>CFBundleExecutable</key>
 	<string>Prompter</string>
 	<key>CFBundleIconFile</key>
@@ -23,7 +23,7 @@
 	<key>LSUIElement</key>
 	<false/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Prompter listens while you hold the dictation hotkey so it can transcribe what you say.</string>
+	<string>Ambitious Prompts listens while you hold the dictation hotkey so it can transcribe what you say.</string>
 	<key>PrompterUpdateRepository</key>
 	<string>dtj0108/prompter</string>
 	<key>NSHumanReadableCopyright</key>

@@ -39,6 +39,7 @@ obfuscation or attempt to stop a fork from changing the gate.
 | Flow | Authorization code + PKCE **S256** (never `plain`) |
 | Scopes | `openid email` |
 | Redirect URI | `https://www.ambitious.social/oauth/prompter/callback` |
+| Authorization entry | `https://www.ambitious.social/oauth/prompter/start` — branded front door that forwards the exact authorize query to `<issuer>/oauth/authorize`, so the macOS consent sheet and browser show only Ambitious, never the Supabase issuer host |
 | Issuer | `https://ehplhuzlsxrhhpkqxeyc.supabase.co/auth/v1` |
 | Discovery | `<issuer>/.well-known/openid-configuration` |
 | JWKS | `<issuer>/.well-known/jwks.json` |
@@ -66,14 +67,22 @@ requires an exact HTTPS redirect URI.
    fallback.) Middleware must allow it unauthenticated.
    The fallback must never read, render, persist, or deliberately log query
    parameters; OAuth codes and state belong only to the authentication session.
-2. **Associated Domains**: the Developer ID release entitlement contains
+2. **Branded start route**: `/oauth/prompter/start` on www.ambitious.social
+   validates that the query is exactly Prompter's registered authorization
+   request (pinned client_id and redirect URI, S256 only, supported scopes)
+   and 303-redirects it to the hosted authorize endpoint. Release sign-in
+   *enters* the flow here so the user-facing sign-in domain is
+   ambitious.social everywhere; without this deployed route, release sign-in
+   lands on a 404 instead of the consent page. It holds no session and never
+   sees a code or token.
+3. **Associated Domains**: the Developer ID release entitlement contains
    `webcredentials:www.ambitious.social`, the signed app embeds a Developer ID
    provisioning profile authorizing that capability, and the site's
    `/.well-known/apple-app-site-association` lists
    `F3FXXB2HL6.com.drew.prompter` under `webcredentials.apps`. Without this
    two-sided association, macOS cancels the HTTPS authentication session
    before opening the system browser.
-3. **Registration**: the Prompter client is manually registered exactly per
+4. **Registration**: the Prompter client is manually registered exactly per
    the table above. Its public `client_id` is embedded in the release binary;
    no client secret exists.
 
@@ -87,15 +96,20 @@ onboarding and Settings provide the account UI.
 2. **PKCE**: 32 random bytes → base64url verifier; challenge =
    base64url(SHA256(verifier)) via CryptoKit. Fresh `state` and `nonce`
    per attempt.
-3. **Authorize** with `ASWebAuthenticationSession`:
+3. **Authorize** with `ASWebAuthenticationSession`. The session opens the
+   branded start URL (`AmbitiousAuthorizationEntry`), carrying the exact
+   authorize query — client_id, redirect_uri, scope, state, nonce,
+   code_challenge(_method=S256) — which www.ambitious.social forwards to the
+   discovered authorize endpoint. The DEBUG lab opens the discovered endpoint
+   directly (no branded front door runs locally):
 
 ```swift
 import AuthenticationServices
 import CryptoKit
 
 let session = ASWebAuthenticationSession(
-    url: authorizeURL, // built from discovery + client_id, redirect_uri,
-                       // scope, state, nonce, code_challenge(_method=S256)
+    url: entryURL, // release: https://www.ambitious.social/oauth/prompter/start
+                   // + the authorize query; lab: authorize endpoint directly
     callback: .https(host: "www.ambitious.social",
                      path: "/oauth/prompter/callback")
 ) { callbackURL, error in

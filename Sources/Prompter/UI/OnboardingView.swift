@@ -92,6 +92,19 @@ struct OnboardingView: View {
         }
         .onAppear { updateKeyCapture(for: step) }
         .onChange(of: step) { _, newStep in updateKeyCapture(for: newStep) }
+        .onChange(of: auth.isSignedIn) { _, signedIn in
+            // The browser round-trip ends with the browser frontmost. When the
+            // identity lands while the gate screen is up, carry the user
+            // forward instead of leaving a stale sign-in card behind Chrome:
+            // people who already finished setup go straight back into
+            // Prompter, first runs continue to the permission steps.
+            guard signedIn, step == .signIn, !renderOnly else { return }
+            if store.config.onboardingDone {
+                returnToPrompter()
+            } else {
+                advance()
+            }
+        }
         .onDisappear { updateKeyCapture(for: nil) }
         .sheet(item: $hotkeyCaptureTarget, onDismiss: {
             updateKeyCapture(for: step)
@@ -117,7 +130,7 @@ struct OnboardingView: View {
         HStack {
             Spacer()
             if store.config.onboardingDone && auth.isSignedIn {
-                SkipLink(label: "Return to Prompter") { returnToPrompter() }
+                SkipLink(label: "Return to Ambitious Prompts") { returnToPrompter() }
             } else if step.rawValue < OnboardingStep.signIn.rawValue {
                 SkipLink(label: "Skip") { goTo(.signIn) }
             }
@@ -365,13 +378,16 @@ struct OnboardingView: View {
                 Button("Continue") { advance() }
                     .buttonStyle(AmbitiousPrimaryButtonStyle())
                     .keyboardShortcut(.defaultAction)
-                Text("Your sign-in is stored securely in your Mac's Keychain, and Prompter keeps working even when you're offline.")
+                Text("Your sign-in is stored securely in your Mac's Keychain, and Ambitious Prompts keeps working even when you're offline.")
                     .font(.system(size: 12))
                     .foregroundStyle(AmbitiousDesign.textTertiary)
                     .multilineTextAlignment(.center)
             }
         } else {
             VStack(spacing: 12) {
+                // Deliberately NOT the window's default action: the system
+                // sign-in sheet defaults to Cancel, so a held/repeating Return
+                // key would start and instantly cancel sessions in a loop.
                 Button {
                     auth.signIn()
                 } label: {
@@ -390,13 +406,19 @@ struct OnboardingView: View {
                     }
                 }
                 .buttonStyle(AmbitiousBlackButtonStyle())
-                .keyboardShortcut(.defaultAction)
                 .disabled(auth.activity == .signingIn)
 
-                Button("Create an Ambitious account") {
-                    NSWorkspace.shared.open(URL(string: "https://www.ambitious.social")!)
+                if auth.activity == .signingIn {
+                    // A browser tab closed mid-flow never reports back; give
+                    // the user a way out of the waiting state.
+                    Button("Cancel sign-in") { auth.cancelSignIn() }
+                        .buttonStyle(AmbitiousSecondaryButtonStyle())
+                } else {
+                    Button("Create an Ambitious account") {
+                        NSWorkspace.shared.open(URL(string: "https://www.ambitious.social")!)
+                    }
+                    .buttonStyle(AmbitiousSecondaryButtonStyle())
                 }
-                .buttonStyle(AmbitiousSecondaryButtonStyle())
 
                 Text("By continuing you agree to the [Terms](https://www.ambitious.social/terms) and [Privacy Policy](https://www.ambitious.social/privacy).")
                     .font(.system(size: 12))
@@ -415,7 +437,7 @@ struct OnboardingView: View {
                 AmbitiousIconCircle(symbol: "mic", diameter: 72, symbolSize: 28, glow: true, pulsing: !renderOnly)
                     .popIn(shown)
                 screenText("Allow the microphone",
-                           "So Prompter can hear you. Audio never leaves your Mac.",
+                           "So Ambitious Prompts can hear you. Audio never leaves your Mac.",
                            maxWidth: 440)
                     .riseIn(shown, delay: 0.12)
 
@@ -431,7 +453,7 @@ struct OnboardingView: View {
                             .foregroundStyle(AmbitiousDesign.textTertiary)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: 400)
-                        settingsLink("Open System Settings → Microphone", pane: "Privacy_Microphone")
+                        settingsLink("Open System Settings → Microphone", pane: .microphone)
                     }
                 }
                 .riseIn(shown, delay: 0.22)
@@ -458,7 +480,7 @@ struct OnboardingView: View {
                 AmbitiousIconCircle(symbol: "keyboard", diameter: 72, symbolSize: 28)
                     .popIn(shown)
                 screenText("Allow Accessibility",
-                           "Lets Prompter catch your hotkey in any app and type for you.",
+                           "Lets Ambitious Prompts catch your hotkey in any app and type for you.",
                            maxWidth: 440)
                     .riseIn(shown, delay: 0.12)
 
@@ -469,12 +491,12 @@ struct OnboardingView: View {
                         Button(axRequesting ? "Opening System Settings…" : "Grant Accessibility") { requestAccessibility() }
                             .buttonStyle(AmbitiousPrimaryButtonStyle(compact: true))
                             .disabled(axRequesting)
-                        Text("Turn ON the switch next to Prompter. This screen updates by itself.")
+                        Text("Turn ON the switch next to Ambitious Prompts. This screen updates by itself.")
                             .font(.system(size: 12))
                             .foregroundStyle(AmbitiousDesign.textTertiary)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: 400)
-                        settingsLink("Open System Settings → Accessibility", pane: "Privacy_Accessibility")
+                        settingsLink("Open System Settings → Accessibility", pane: .accessibility)
                     }
                 }
                 .riseIn(shown, delay: 0.22)
@@ -578,7 +600,7 @@ struct OnboardingView: View {
                         notice("That shortcut is already doing dictation — pick a different one so both can work.",
                                color: AmbitiousDesign.warning, maxWidth: 400)
                     } else if selection.wrappedValue == HotkeyKey.fn.rawValue {
-                        notice("Using fn: set System Settings → Keyboard → “Press 🌐 key” to “Do Nothing” so the system doesn't race Prompter.",
+                        notice("Using fn: set System Settings → Keyboard → “Press 🌐 key” to “Do Nothing” so the system doesn't race Ambitious Prompts.",
                                color: AmbitiousDesign.textTertiary, maxWidth: 400)
                     }
                 }
@@ -832,18 +854,12 @@ struct OnboardingView: View {
         }
     }
 
-    private func settingsLink(_ label: String, pane: String) -> some View {
-        Button(label) { openPrivacyPane(pane) }
+    private func settingsLink(_ label: String, pane: SystemSettingsPrivacyPane) -> some View {
+        Button(label) { pane.open() }
             .buttonStyle(.plain)
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(AmbitiousDesign.brandPrimary)
             .clickCursor()
-    }
-
-    private func openPrivacyPane(_ pane: String) {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
-            NSWorkspace.shared.open(url)
-        }
     }
 
     private func runTest() {

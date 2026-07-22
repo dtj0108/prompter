@@ -91,12 +91,12 @@ final class DictationController {
     private func beginSession(mode: DictationMode, handsFree: Bool = false) {
         guard !hotkeySelectionActive else { return }
         guard AmbitiousAuthManager.shared.isSignedIn else {
-            HUD.shared.flash(.failure("Sign in with Ambitious to use Prompter"), for: 3.5)
+            HUD.shared.flash(.failure("Sign in with Ambitious to use Ambitious Prompts"), for: 3.5)
             WindowRouter.shared.openOnboarding(startStep: .signIn)
             return
         }
         guard !isPaused else {
-            HUD.shared.flash(.failure("Prompter is paused"))
+            HUD.shared.flash(.failure("Ambitious Prompts is paused"))
             return
         }
         guard !busy else {

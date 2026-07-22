@@ -7,6 +7,13 @@ private struct AmbitiousAuthConfiguration {
     let issuer: URL
     let clientID: String
     let redirectURI: URL
+    /// Branded front door for the authorization request. Release sign-in opens
+    /// this www.ambitious.social URL — which forwards the exact query to the
+    /// hosted authorize endpoint — so every surface the user sees (the macOS
+    /// confirmation sheet, the browser popup and address bar) names Ambitious,
+    /// never the Supabase issuer host. nil (the DEBUG lab has no branded front
+    /// door) opens the authorize endpoint from discovery directly.
+    let brandedAuthorizationStart: URL?
 
     static var current: AmbitiousAuthConfiguration {
 #if DEBUG
@@ -18,13 +25,19 @@ private struct AmbitiousAuthConfiguration {
            let redirect = URL(string: environment["PROMPTER_AMBITIOUS_REDIRECT_URI"] ?? "prompter-lab://oauth/callback"),
            ["127.0.0.1", "localhost"].contains(issuer.host ?? ""),
            redirect.scheme == "prompter-lab" {
-            return AmbitiousAuthConfiguration(issuer: issuer, clientID: clientID, redirectURI: redirect)
+            return AmbitiousAuthConfiguration(
+                issuer: issuer,
+                clientID: clientID,
+                redirectURI: redirect,
+                brandedAuthorizationStart: nil
+            )
         }
 #endif
         return AmbitiousAuthConfiguration(
             issuer: URL(string: "https://ehplhuzlsxrhhpkqxeyc.supabase.co/auth/v1")!,
             clientID: "6f2eb6a1-e2b8-470f-a35d-0df05fbdd717",
-            redirectURI: URL(string: "https://www.ambitious.social/oauth/prompter/callback")!
+            redirectURI: URL(string: "https://www.ambitious.social/oauth/prompter/callback")!,
+            brandedAuthorizationStart: URL(string: "https://www.ambitious.social/oauth/prompter/start")!
         )
     }
 
@@ -177,6 +190,14 @@ final class AmbitiousDebugCallbackBroker {
         continuation.resume(returning: callbackURL)
         return true
     }
+
+    /// An abandoned lab browser never delivers a callback; user-driven cancel
+    /// resolves the waiting flow the same way the release session cancel does.
+    func cancelPending() {
+        guard let continuation else { return }
+        self.continuation = nil
+        continuation.resume(throwing: AmbitiousAuthFlowError.canceled)
+    }
 }
 #endif
 
@@ -262,6 +283,9 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
                     self.identity = session.identity
                     self.activity = .idle
                     self.errorMessage = nil
+                    // The browser flow leaves Chrome/Safari frontmost; put the
+                    // assistant back in front so setup visibly continues.
+                    WindowRouter.shared.focusOnboarding()
                 }
                 Log.write("Ambitious sign-in completed")
             } catch AmbitiousAuthFlowError.canceled, AmbitiousAuthFlowError.denied {
@@ -298,6 +322,20 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
         completeSignOut(message: nil)
     }
 
+    /// Cancels an in-flight browser sign-in. A closed browser tab never calls
+    /// back, so without this the gate screen would wait in "Signing in…"
+    /// forever; cancelling resumes the flow through the normal canceled path.
+    func cancelSignIn() {
+        DispatchQueue.main.async {
+            self.webSession?.cancel()
+#if DEBUG
+            MainActor.assumeIsolated {
+                AmbitiousDebugCallbackBroker.shared.cancelPending()
+            }
+#endif
+        }
+    }
+
     func refreshNow() {
         refresh(force: true)
     }
@@ -321,7 +359,7 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
         guard let reason = pendingSignOutReason,
               !DictationController.shared.hasInFlightDictation else { return }
         let message = reason == .revoked
-            ? "Your Ambitious authorization ended. Sign in again to keep using Prompter."
+            ? "Your Ambitious authorization ended. Sign in again to keep using Ambitious Prompts."
             : nil
         completeSignOut(message: message)
     }
@@ -367,13 +405,13 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
                 Log.write("Ambitious account refresh completed")
             } catch {
                 activity = .idle
-                errorMessage = "Account check couldn't be saved. Prompter still works offline."
+                errorMessage = "Account check couldn't be saved. Ambitious Prompts still works offline."
                 Log.write("Ambitious account refresh storage failed")
             }
         case .transientFailure:
             guard identity != nil, pendingSignOutReason == nil else { return }
             activity = .idle
-            errorMessage = "Couldn't check the account right now. Prompter still works offline."
+            errorMessage = "Couldn't check the account right now. Ambitious Prompts still works offline."
             Log.write("Ambitious account refresh deferred after a transient failure")
         case .definitiveRevocation:
             let decision = AmbitiousAuthGate.decision(
@@ -386,7 +424,7 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
                 activity = .signOutPending
                 errorMessage = "Your authorization ended. Finishing the current dictation first."
             } else {
-                completeSignOut(message: "Your Ambitious authorization ended. Sign in again to keep using Prompter.")
+                completeSignOut(message: "Your Ambitious authorization ended. Sign in again to keep using Ambitious Prompts.")
             }
             Log.write("Ambitious grant was revoked")
         }
@@ -416,20 +454,20 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
             nonce: try AmbitiousPKCE.verifier(),
             verifier: try AmbitiousPKCE.verifier()
         )
-        guard var components = URLComponents(url: discovery.authorizationEndpoint, resolvingAgainstBaseURL: false) else {
-            throw AmbitiousAuthFlowError.invalidDiscovery
-        }
-        components.queryItems = (components.queryItems ?? []) + [
-            URLQueryItem(name: "client_id", value: configuration.clientID),
-            URLQueryItem(name: "redirect_uri", value: configuration.redirectURI.absoluteString),
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "scope", value: "openid email"),
-            URLQueryItem(name: "state", value: transaction.state),
-            URLQueryItem(name: "nonce", value: transaction.nonce),
-            URLQueryItem(name: "code_challenge", value: AmbitiousPKCE.challenge(for: transaction.verifier)),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
-        ]
-        guard let authorizationURL = components.url else { throw AmbitiousAuthFlowError.invalidDiscovery }
+        guard let authorizationURL = AmbitiousAuthorizationEntry.url(
+            brandedStart: configuration.brandedAuthorizationStart,
+            authorizationEndpoint: discovery.authorizationEndpoint,
+            queryItems: [
+                URLQueryItem(name: "client_id", value: configuration.clientID),
+                URLQueryItem(name: "redirect_uri", value: configuration.redirectURI.absoluteString),
+                URLQueryItem(name: "response_type", value: "code"),
+                URLQueryItem(name: "scope", value: "openid email"),
+                URLQueryItem(name: "state", value: transaction.state),
+                URLQueryItem(name: "nonce", value: transaction.nonce),
+                URLQueryItem(name: "code_challenge", value: AmbitiousPKCE.challenge(for: transaction.verifier)),
+                URLQueryItem(name: "code_challenge_method", value: "S256"),
+            ]
+        ) else { throw AmbitiousAuthFlowError.invalidDiscovery }
         let callbackURL = try await openBrowser(
             authorizationURL: authorizationURL,
             callback: configuration.callback(),

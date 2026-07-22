@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         RunLoop.main.add(updateTimer, forMode: .common)
-        Log.write("Prompter launched")
+        Log.write("Ambitious Prompts launched")
 
         // Prompter is a regular Dock app: always present a window at launch.
         presentLaunchWindow()
@@ -77,17 +77,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupMainMenu() {
         let main = NSMenu()
 
-        let appItem = NSMenuItem(title: "Prompter", action: nil, keyEquivalent: "")
-        let appMenu = NSMenu(title: "Prompter")
+        let appItem = NSMenuItem(title: "Ambitious Prompts", action: nil, keyEquivalent: "")
+        let appMenu = NSMenu(title: "Ambitious Prompts")
         appMenu.delegate = self
-        appMenu.addItem(NSMenuItem(title: "About Prompter", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""))
+        appMenu.addItem(NSMenuItem(title: "About Ambitious Prompts", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""))
         appMenu.addItem(.separator())
         let settings = makeItem("Settings…", #selector(openSettings), ",")
         appMenu.addItem(settings)
         let setup = makeItem("Setup Assistant…", #selector(openOnboarding), "")
         appMenu.addItem(setup)
         appMenu.addItem(.separator())
-        let pause = makeItem("Pause Prompter", #selector(togglePause), "")
+        let pause = makeItem("Pause Ambitious Prompts", #selector(togglePause), "")
         appMenu.addItem(pause)
         pauseItem = pause
         let info = NSMenuItem(title: hotkeyInfoText(), action: nil, keyEquivalent: "")
@@ -95,8 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(info)
         hotkeyInfoItem = info
         appMenu.addItem(.separator())
-        appMenu.addItem(NSMenuItem(title: "Hide Prompter", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
-        appMenu.addItem(NSMenuItem(title: "Quit Prompter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appMenu.addItem(NSMenuItem(title: "Hide Ambitious Prompts", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
+        appMenu.addItem(NSMenuItem(title: "Quit Ambitious Prompts", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         appItem.submenu = appMenu
         main.addItem(appItem)
 
@@ -153,7 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func togglePause() {
         DictationController.shared.isPaused.toggle()
         let paused = DictationController.shared.isPaused
-        pauseItem?.title = paused ? "Resume Prompter" : "Pause Prompter"
+        pauseItem?.title = paused ? "Resume Ambitious Prompts" : "Pause Ambitious Prompts"
     }
 
     @objc private func openMainWindow() { WindowRouter.shared.openMain() }

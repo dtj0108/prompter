@@ -37,7 +37,7 @@ struct StyleView: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Style").font(.largeTitle.bold())
-                Text("Choose how Prompter writes in each kind of app.")
+                Text("Choose how Ambitious Prompts writes in each kind of app.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -336,7 +336,7 @@ private struct ContextBanner: View {
                 Text(title)
                     .font(.system(size: 25, weight: .semibold))
                     .foregroundStyle(.white)
-                Text("Prompter recognizes the active app and applies this style before pasting at your cursor.")
+                Text("Ambitious Prompts recognizes the active app and applies this style before pasting at your cursor.")
                     .font(.callout)
                     .foregroundStyle(.white.opacity(0.78))
                     .fixedSize(horizontal: false, vertical: true)

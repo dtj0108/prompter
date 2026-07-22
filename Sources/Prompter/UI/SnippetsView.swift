@@ -6,7 +6,7 @@ struct SnippetsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Say a trigger phrase — Prompter types the expansion. Say just the trigger by itself for an instant swap, or drop it mid-sentence and the AI expands it in place.")
+                Text("Say a trigger phrase — Ambitious Prompts types the expansion. Say just the trigger by itself for an instant swap, or drop it mid-sentence and the AI expands it in place.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Spacer()

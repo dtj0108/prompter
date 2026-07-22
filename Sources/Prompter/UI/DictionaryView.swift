@@ -9,7 +9,7 @@ struct DictionaryView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Dictionary").font(.title2.bold())
-                    Text("Words and names Prompter always spells your way.")
+                    Text("Words and names Ambitious Prompts always spells your way.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()

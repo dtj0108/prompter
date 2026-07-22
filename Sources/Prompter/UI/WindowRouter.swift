@@ -55,7 +55,7 @@ final class WindowRouter: NSObject, NSWindowDelegate {
             return
         }
         MainWindowState.shared.tab = tab
-        open(key: "main", title: "Prompter", size: NSSize(width: 960, height: 640)) {
+        open(key: "main", title: "Ambitious Prompts", size: NSSize(width: 960, height: 640)) {
             MainWindowView()
         }
     }
@@ -73,12 +73,19 @@ final class WindowRouter: NSObject, NSWindowDelegate {
     func openSnippets() { openMain(tab: .snippets) }
 
     func openOnboarding(startStep: OnboardingStep = .welcome) {
-        open(key: "onboarding", title: "Welcome to Prompter", size: NSSize(width: 680, height: 640), chromeless: true) {
+        open(key: "onboarding", title: "Welcome to Ambitious Prompts", size: NSSize(width: 680, height: 640), chromeless: true) {
             OnboardingView(startStep: startStep).environmentObject(ConfigStore.shared)
         }
     }
 
     func closeOnboarding() {
         windows["onboarding"]?.close()
+    }
+
+    /// The OAuth round-trip leaves the browser frontmost. Called when sign-in
+    /// completes so the assistant comes back over it and setup continues.
+    func focusOnboarding() {
+        NSApp.activate(ignoringOtherApps: true)
+        windows["onboarding"]?.makeKeyAndOrderFront(nil)
     }
 }

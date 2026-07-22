@@ -28,6 +28,8 @@ After installing a rebuilt app: quit the running instance first (`pkill -x Promp
 ## Critical gotchas
 
 - **Ad-hoc signing resets TCC**: every rebuilt binary loses Microphone/Accessibility grants. Permanent fix: create a self-signed "prompter-dev" Code Signing cert in Keychain Access once, then `./scripts/build-app.sh --identity prompter-dev --install`.
+- **System Settings deep links need the modern pane id**: use `SystemSettingsPrivacyPane` (`x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_…`). The legacy `com.apple.preference.security` id silently ignores the anchor on macOS 26 and strands the user on the wrong privacy subpage.
+- **Headless commands suppress Keychain UI** (`HeadlessCLI`): a dev/CI binary signed differently from the installed app would otherwise hang forever on a hidden keychain consent prompt when touching the Ambitious session item. CLI runs therefore see the item as absent (signed out); that's by design.
 - **Main menu is programmatic**: there is no storyboard, so `AppDelegate.setupMainMenu()` provides the app, Edit, Navigate, and Window menus. Keep the Edit menu so standard ⌘V/⌘C shortcuts continue to work.
 - **Never lose the user's words**: every failure path in `DictationController`/`LLMClient` must fall back to pasting/copying the raw transcript, never dropping it.
 - **Tolerant decoding**: all Codable models in `Storage/Models.swift` have custom `init(from:)` with `decodeIfPresent` per field. When adding a config/model field, add it to `CodingKeys` AND the tolerant init, or user data gets wiped on decode failure (loadJSON backs up bad files, but still).
@@ -37,7 +39,7 @@ After installing a rebuilt app: quit the running instance first (`pkill -x Promp
 
 ## Data & config
 
-Editable app state lives in `~/Library/Application Support/Prompter/`: `config.json` (incl. OpenRouter key, chmod 600), `dictionary.json`, `snippets.json`, `styles.json`, `history.jsonl` (insights), `prompts/prompt-mode.md` (user-editable meta-prompt), `prompter.log` (read this first when debugging). Ambitious identity and OAuth tokens live only in the macOS Keychain under `com.drew.prompter.ambitious`; never log an authorization code, token, or full OAuth callback URL.
+Editable app state lives in `~/Library/Application Support/Prompter/`: `config.json` (incl. OpenRouter key, chmod 600), `dictionary.json`, `snippets.json`, `styles.json`, `history.jsonl` (insights), `prompts/prompt-mode.md` (user-editable meta-prompt), `prompter.log` (read this first when debugging). Ambitious identity and OAuth tokens live only in the macOS Keychain under `com.drew.prompter.ambitious`; never log an authorization code, token, or full OAuth callback URL. Release sign-in enters the browser flow at the branded `https://www.ambitious.social/oauth/prompter/start` route (deployed from the ambitious monorepo) so no user-visible surface shows the Supabase issuer host; see SIGN_IN_WITH_AMBITIOUS.md before touching the flow.
 
 OpenRouter transcription is opt-in and uses `openai/whisper-large-v3-turbo`; local Apple STT is the default. Text cleanup and Prompt Mode default to the low-latency `google/gemini-3.1-flash-lite`. STT and cleanup `usage.cost` values are both logged per dictation into insights.
 

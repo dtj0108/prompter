@@ -16,7 +16,7 @@ Requirements:
 - macOS 26 or newer
 - A free Ambitious account
 - Microphone and Accessibility permissions
-- Optional: an [OpenRouter API key](https://openrouter.ai/keys) for fast AI cleanup, Prompt Mode, and opt-in Whisper transcription
+- Optional: an [OpenRouter API key](https://openrouter.ai/keys) for fast AI cleanup, Prompt Mode, and opt-in cloud transcription
 
 To install:
 
@@ -44,7 +44,7 @@ Pressing another key while holding a Prompter hotkey cancels the recording, so n
 
 Apple's on-device SpeechAnalyzer is the default transcription engine, even when an OpenRouter key is configured. This keeps the first step fast, private, and free. OpenRouter remains optional for the cleanup and Prompt Mode rewrite that follows; Gemini Flash Lite is the fast, inexpensive default.
 
-Cloud transcription is a separate opt-in setting. When enabled, Prompter records the native microphone audio to a temporary WAV and sends it to OpenRouter's Whisper Large V3 Turbo endpoint, with Apple still running as a fallback. The temporary audio file is deleted after the request completes. Without an OpenRouter key, optional text cleanup can use a locally authenticated `claude` CLI or plain dictionary corrections.
+Cloud transcription is a separate opt-in setting. When enabled, Prompter records the native microphone audio to a temporary WAV and sends it to the selected OpenRouter transcription model, with Apple still running as a fallback. Whisper Large V3 Turbo remains the fast, inexpensive default; GPT-4o Transcribe is available as the higher-quality option. The temporary audio file is deleted after the request completes. Without an OpenRouter key, optional text cleanup can use a locally authenticated `claude` CLI or plain dictionary corrections.
 
 ## Privacy and cost
 

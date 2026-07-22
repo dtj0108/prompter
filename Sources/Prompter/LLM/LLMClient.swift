@@ -106,7 +106,7 @@ final class LLMClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         // Optional attribution headers (shown on OpenRouter's activity page).
         request.setValue("https://github.com/drewbaskin/prompter", forHTTPHeaderField: "HTTP-Referer")
-        request.setValue("Prompter", forHTTPHeaderField: "X-OpenRouter-Title")
+        request.setValue("Ambitious Prompts", forHTTPHeaderField: "X-OpenRouter-Title")
 
         var body: [String: Any] = [
             "model": model,

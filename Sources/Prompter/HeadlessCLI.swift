@@ -24,7 +24,7 @@ enum HeadlessCLI {
            !AmbitiousAuthManager.hasUsableCachedIdentity() {
             exitCode = 3
             FileHandle.standardError.write(Data(
-                "Prompter requires a signed-in Ambitious account. Open the app and sign in first.\n".utf8
+                "Ambitious Prompts requires a signed-in Ambitious account. Open the app and sign in first.\n".utf8
             ))
             return true
         }

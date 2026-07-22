@@ -108,7 +108,7 @@ final class AppUpdater: ObservableObject {
     private func fetch(_ url: URL) async throws -> Data {
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
-        request.setValue("Prompter/\(currentVersion)", forHTTPHeaderField: "User-Agent")
+        request.setValue("AmbitiousPrompts/\(currentVersion)", forHTTPHeaderField: "User-Agent")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -151,7 +151,7 @@ final class AppUpdater: ObservableObject {
                 helper.arguments = [
                     "--install-update",
                     sourceApp.path,
-                    "/Applications/Prompter.app",
+                    "/Applications/Ambitious Prompts.app",
                     root.path,
                     "\(ProcessInfo.processInfo.processIdentifier)",
                 ]
@@ -177,9 +177,18 @@ enum UpdateInstaller {
         let fm = FileManager.default
         if fm.fileExists(atPath: targetApp.path) { try fm.removeItem(at: targetApp) }
         try fm.copyItem(at: sourceApp, to: targetApp)
+
+        // Version 1.0.1027 moved the visible bundle to its branded filename.
+        // Remove the former install only after the replacement has copied so
+        // an interrupted update never leaves the user without a working app.
+        let legacyApp = URL(fileURLWithPath: "/Applications/Prompter.app", isDirectory: true)
+        if legacyApp.path != targetApp.path, fm.fileExists(atPath: legacyApp.path) {
+            try fm.removeItem(at: legacyApp)
+        }
+
         try? fm.removeItem(at: temporaryRoot)
 
-        if targetApp.path == "/Applications/Prompter.app" {
+        if targetApp.path == "/Applications/Ambitious Prompts.app" {
             let open = Process()
             open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
             open.arguments = [targetApp.path]
@@ -202,8 +211,8 @@ private enum UpdateError: LocalizedError {
         case .downloadFailed: return "The update download failed."
         case .checksumMismatch: return "The downloaded update did not pass verification."
         case .extractionFailed: return "The downloaded update could not be extracted."
-        case .invalidBundle: return "The update did not contain a valid Prompter app."
-        case .helperFailed: return "Prompter could not start the update installer."
+        case .invalidBundle: return "The update did not contain a valid Ambitious Prompts app."
+        case .helperFailed: return "Ambitious Prompts could not start the update installer."
         }
     }
 }

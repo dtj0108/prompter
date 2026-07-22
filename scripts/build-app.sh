@@ -145,13 +145,16 @@ fi
 echo "Built $APP"
 
 if [[ $INSTALL -eq 1 ]]; then
+  INSTALLED_APP="/Applications/Ambitious Prompts.app"
+  LEGACY_APP="/Applications/Prompter.app"
   pkill -x Prompter 2>/dev/null || true
   sleep 0.5
-  rm -rf /Applications/Prompter.app
-  cp -R "$APP" /Applications/Prompter.app
-  echo "Installed /Applications/Prompter.app"
+  rm -rf "$INSTALLED_APP"
+  rm -rf "$LEGACY_APP"
+  cp -R "$APP" "$INSTALLED_APP"
+  echo "Installed $INSTALLED_APP"
   if [[ $RELAUNCH -eq 1 ]]; then
-    open /Applications/Prompter.app
-    echo "Relaunched Prompter"
+    open "$INSTALLED_APP"
+    echo "Relaunched Ambitious Prompts"
   fi
 fi

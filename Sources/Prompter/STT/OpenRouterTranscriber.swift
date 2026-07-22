@@ -74,7 +74,7 @@ enum OpenRouterTranscriber {
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("https://github.com/drewbaskin/prompter", forHTTPHeaderField: "HTTP-Referer")
-        request.setValue("Prompter", forHTTPHeaderField: "X-OpenRouter-Title")
+        request.setValue("Ambitious Prompts", forHTTPHeaderField: "X-OpenRouter-Title")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await dataWithTransientRetries(for: request)

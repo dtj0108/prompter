@@ -359,7 +359,7 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
         guard let reason = pendingSignOutReason,
               !DictationController.shared.hasInFlightDictation else { return }
         let message = reason == .revoked
-            ? "Your Ambitious authorization ended. Sign in again to keep using Prompter."
+            ? "Your Ambitious authorization ended. Sign in again to keep using Ambitious Prompts."
             : nil
         completeSignOut(message: message)
     }
@@ -405,13 +405,13 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
                 Log.write("Ambitious account refresh completed")
             } catch {
                 activity = .idle
-                errorMessage = "Account check couldn't be saved. Prompter still works offline."
+                errorMessage = "Account check couldn't be saved. Ambitious Prompts still works offline."
                 Log.write("Ambitious account refresh storage failed")
             }
         case .transientFailure:
             guard identity != nil, pendingSignOutReason == nil else { return }
             activity = .idle
-            errorMessage = "Couldn't check the account right now. Prompter still works offline."
+            errorMessage = "Couldn't check the account right now. Ambitious Prompts still works offline."
             Log.write("Ambitious account refresh deferred after a transient failure")
         case .definitiveRevocation:
             let decision = AmbitiousAuthGate.decision(
@@ -424,7 +424,7 @@ final class AmbitiousAuthManager: NSObject, ObservableObject, @unchecked Sendabl
                 activity = .signOutPending
                 errorMessage = "Your authorization ended. Finishing the current dictation first."
             } else {
-                completeSignOut(message: "Your Ambitious authorization ended. Sign in again to keep using Prompter.")
+                completeSignOut(message: "Your Ambitious authorization ended. Sign in again to keep using Ambitious Prompts.")
             }
             Log.write("Ambitious grant was revoked")
         }

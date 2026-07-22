@@ -130,7 +130,7 @@ struct OnboardingView: View {
         HStack {
             Spacer()
             if store.config.onboardingDone && auth.isSignedIn {
-                SkipLink(label: "Return to Prompter") { returnToPrompter() }
+                SkipLink(label: "Return to Ambitious Prompts") { returnToPrompter() }
             } else if step.rawValue < OnboardingStep.signIn.rawValue {
                 SkipLink(label: "Skip") { goTo(.signIn) }
             }
@@ -378,7 +378,7 @@ struct OnboardingView: View {
                 Button("Continue") { advance() }
                     .buttonStyle(AmbitiousPrimaryButtonStyle())
                     .keyboardShortcut(.defaultAction)
-                Text("Your sign-in is stored securely in your Mac's Keychain, and Prompter keeps working even when you're offline.")
+                Text("Your sign-in is stored securely in your Mac's Keychain, and Ambitious Prompts keeps working even when you're offline.")
                     .font(.system(size: 12))
                     .foregroundStyle(AmbitiousDesign.textTertiary)
                     .multilineTextAlignment(.center)
@@ -437,7 +437,7 @@ struct OnboardingView: View {
                 AmbitiousIconCircle(symbol: "mic", diameter: 72, symbolSize: 28, glow: true, pulsing: !renderOnly)
                     .popIn(shown)
                 screenText("Allow the microphone",
-                           "So Prompter can hear you. Audio never leaves your Mac.",
+                           "So Ambitious Prompts can hear you. Audio never leaves your Mac.",
                            maxWidth: 440)
                     .riseIn(shown, delay: 0.12)
 
@@ -480,7 +480,7 @@ struct OnboardingView: View {
                 AmbitiousIconCircle(symbol: "keyboard", diameter: 72, symbolSize: 28)
                     .popIn(shown)
                 screenText("Allow Accessibility",
-                           "Lets Prompter catch your hotkey in any app and type for you.",
+                           "Lets Ambitious Prompts catch your hotkey in any app and type for you.",
                            maxWidth: 440)
                     .riseIn(shown, delay: 0.12)
 
@@ -491,7 +491,7 @@ struct OnboardingView: View {
                         Button(axRequesting ? "Opening System Settings…" : "Grant Accessibility") { requestAccessibility() }
                             .buttonStyle(AmbitiousPrimaryButtonStyle(compact: true))
                             .disabled(axRequesting)
-                        Text("Turn ON the switch next to Prompter. This screen updates by itself.")
+                        Text("Turn ON the switch next to Ambitious Prompts. This screen updates by itself.")
                             .font(.system(size: 12))
                             .foregroundStyle(AmbitiousDesign.textTertiary)
                             .multilineTextAlignment(.center)
@@ -600,7 +600,7 @@ struct OnboardingView: View {
                         notice("That shortcut is already doing dictation — pick a different one so both can work.",
                                color: AmbitiousDesign.warning, maxWidth: 400)
                     } else if selection.wrappedValue == HotkeyKey.fn.rawValue {
-                        notice("Using fn: set System Settings → Keyboard → “Press 🌐 key” to “Do Nothing” so the system doesn't race Prompter.",
+                        notice("Using fn: set System Settings → Keyboard → “Press 🌐 key” to “Do Nothing” so the system doesn't race Ambitious Prompts.",
                                color: AmbitiousDesign.textTertiary, maxWidth: 400)
                     }
                 }

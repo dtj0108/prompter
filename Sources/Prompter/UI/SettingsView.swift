@@ -19,7 +19,7 @@ struct SettingsView: View {
             Section("Ambitious account") {
                 if let identity = auth.identity {
                     LabeledContent("Signed in", value: identity.email ?? "Ambitious member")
-                    Text("This sign-in only confirms your identity. Its tokens cannot read or post Ambitious content, and cached identity keeps Prompter working offline.")
+                    Text("This sign-in only confirms your identity. Its tokens cannot read or post Ambitious content, and cached identity keeps Ambitious Prompts working offline.")
                         .font(.caption).foregroundStyle(.secondary)
                     HStack {
                         Button(auth.activity == .refreshing ? "Checking…" : "Check account") {
@@ -31,7 +31,7 @@ struct SettingsView: View {
                             .disabled(auth.activity == .signOutPending)
                             .clickCursor()
                     }
-                    Text("You can also remove Prompter at Ambitious → Settings → Connected Apps.")
+                    Text("You can also remove Ambitious Prompts at Ambitious → Settings → Connected Apps.")
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text("A free Ambitious account is required for dictation and Prompt Mode.")
@@ -59,7 +59,7 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.orange)
                 }
                 if store.config.dictationHotkey == HotkeyKey.fn.rawValue || store.config.promptHotkey == HotkeyKey.fn.rawValue {
-                    Text("Using fn: set System Settings → Keyboard → “Press 🌐 key” to “Do Nothing” so the system doesn't race Prompter.")
+                    Text("Using fn: set System Settings → Keyboard → “Press 🌐 key” to “Do Nothing” so the system doesn't race Ambitious Prompts.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -347,7 +347,7 @@ struct SettingsView: View {
         switch updater.state {
         case .idle: return ""
         case .checking: return "Checking GitHub Releases…"
-        case .upToDate: return "Prompter \(updater.currentVersion) is up to date."
+        case .upToDate: return "Ambitious Prompts \(updater.currentVersion) is up to date."
         case .available(let update):
             return update.notes.isEmpty ? "Version \(update.version) is available." : update.notes
         case .downloading: return "Downloading and verifying the update…"

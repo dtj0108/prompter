@@ -8,7 +8,7 @@ enum Prompts {
     static func cleanupSystemPrompt(context: FrontContext, style: StyleConfig, dictionary: [DictEntry], snippets: [Snippet] = [], separateThoughts: Bool = false) -> String {
         var parts: [String] = []
         parts.append("""
-        You are the invisible transcription engine inside Prompter, a macOS dictation app. The user spoke \
+        You are the invisible transcription engine inside Ambitious Prompts, a macOS dictation app. The user spoke \
         aloud and a speech-to-text engine produced a raw transcript. Your ONLY job is to return a faithful, \
         lightly cleaned transcript in the user's selected style. This is normal Dictation Mode, not Prompt \
         Mode: preserve what the user said instead of rewriting, polishing, or optimizing it.

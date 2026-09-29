@@ -4,13 +4,13 @@ import Foundation
 
 struct Config: Codable {
     var apiKey: String = ""
+    /// Direct OpenAI credential used only for realtime speech transcription.
+    var openAIKey: String = ""
+    /// Opt-in live insertion for regular dictation. Prompt Mode inserts at the end.
+    var liveTypingEnabled: Bool = false
     var openRouterKey: String = ""
     /// Fast, inexpensive text model used by Prompt Mode.
     var openRouterModel: String = "google/gemini-3.1-flash-lite"
-    /// Off by default: Apple's local SpeechAnalyzer is the fast primary path.
-    var useOpenRouterTranscription: Bool = false
-    /// Optional cloud speech-to-text model when explicitly enabled.
-    var openRouterTranscriptionModel: String = "openai/whisper-large-v3-turbo"
     /// Dictation cleanup runs on every utterance, so use the same fast,
     /// inexpensive model by default.
     var openRouterCleanupModel: String = "google/gemini-3.1-flash-lite"
@@ -22,6 +22,8 @@ struct Config: Codable {
     var claudeCLIPath: String = ""
     var dictationHotkey: String = "rightOption"
     var promptHotkey: String = "rightCommand"
+    var additionalDictationHotkeys: [String] = []
+    var additionalPromptHotkeys: [String] = []
     var tapToLockEnabled: Bool = true
     var llmCleanupEnabled: Bool = true
     var holdThresholdMs: Int = 180
@@ -204,8 +206,9 @@ enum PromptAssistLevel: String, CaseIterable, Identifiable {
 
 extension Config {
     private enum CodingKeys: String, CodingKey {
-        case apiKey, openRouterKey, openRouterModel, useOpenRouterTranscription, openRouterTranscriptionModel, openRouterCleanupModel, modelDefaultsVersion, cleanupModel, promptModel, claudeCLIPath
-        case dictationHotkey, promptHotkey, tapToLockEnabled
+        case apiKey, openAIKey, liveTypingEnabled
+        case openRouterKey, openRouterModel, openRouterCleanupModel, modelDefaultsVersion, cleanupModel, promptModel, claudeCLIPath
+        case dictationHotkey, promptHotkey, additionalDictationHotkeys, additionalPromptHotkeys, tapToLockEnabled
         case llmCleanupEnabled, holdThresholdMs, pasteRestoreDelayMs, maxRecordingSec
         case soundsEnabled, showIdleIndicator, launchAtLogin, onboardingDone
         case promptAssistLevel, separateThoughts, voiceIsolationEnabled
@@ -215,6 +218,8 @@ extension Config {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Config()
         apiKey = (try? c.decodeIfPresent(String.self, forKey: .apiKey)) ?? nil ?? d.apiKey
+        openAIKey = (try? c.decodeIfPresent(String.self, forKey: .openAIKey)) ?? nil ?? d.openAIKey
+        liveTypingEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .liveTypingEnabled)) ?? nil ?? d.liveTypingEnabled
         openRouterKey = (try? c.decodeIfPresent(String.self, forKey: .openRouterKey)) ?? nil ?? d.openRouterKey
         let storedModelDefaultsVersion = (try? c.decodeIfPresent(Int.self, forKey: .modelDefaultsVersion)) ?? nil ?? 0
         let storedOpenRouterModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterModel)) ?? nil ?? d.openRouterModel
@@ -228,8 +233,6 @@ extension Config {
         openRouterModel = storedModelDefaultsVersion < 1 && previousPromptDefaults.contains(storedOpenRouterModel)
             ? d.openRouterModel
             : storedOpenRouterModel
-        useOpenRouterTranscription = (try? c.decodeIfPresent(Bool.self, forKey: .useOpenRouterTranscription)) ?? nil ?? d.useOpenRouterTranscription
-        openRouterTranscriptionModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterTranscriptionModel)) ?? nil ?? d.openRouterTranscriptionModel
         let storedCleanupModel = (try? c.decodeIfPresent(String.self, forKey: .openRouterCleanupModel)) ?? nil ?? d.openRouterCleanupModel
         // Prefer predictable low latency over the free router, which can be
         // slower or rate-limited during peak usage.
@@ -248,6 +251,8 @@ extension Config {
         claudeCLIPath = (try? c.decodeIfPresent(String.self, forKey: .claudeCLIPath)) ?? nil ?? d.claudeCLIPath
         dictationHotkey = (try? c.decodeIfPresent(String.self, forKey: .dictationHotkey)) ?? nil ?? d.dictationHotkey
         promptHotkey = (try? c.decodeIfPresent(String.self, forKey: .promptHotkey)) ?? nil ?? d.promptHotkey
+        additionalDictationHotkeys = (try? c.decodeIfPresent([String].self, forKey: .additionalDictationHotkeys)) ?? nil ?? []
+        additionalPromptHotkeys = (try? c.decodeIfPresent([String].self, forKey: .additionalPromptHotkeys)) ?? nil ?? []
         llmCleanupEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .llmCleanupEnabled)) ?? nil ?? d.llmCleanupEnabled
         holdThresholdMs = (try? c.decodeIfPresent(Int.self, forKey: .holdThresholdMs)) ?? nil ?? d.holdThresholdMs
         pasteRestoreDelayMs = (try? c.decodeIfPresent(Int.self, forKey: .pasteRestoreDelayMs)) ?? nil ?? d.pasteRestoreDelayMs

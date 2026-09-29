@@ -56,6 +56,7 @@ struct OnboardingView: View {
 
     @State private var keyMonitor: Any?
     @State private var hotkeyCaptureTarget: HotkeyCaptureTarget?
+    @State private var hotkeyError: String?
 
     /// Direction of the last step change, so screens slide the way you're going.
     @State private var slideForward = true
@@ -110,12 +111,7 @@ struct OnboardingView: View {
             updateKeyCapture(for: step)
         }) { target in
             HotkeyRecorderSheet(target: target) { shortcut in
-                switch target {
-                case .dictation:
-                    store.config.dictationHotkey = shortcut.storedValue
-                case .prompt:
-                    store.config.promptHotkey = shortcut.storedValue
-                }
+                hotkeyError = store.config.setHotkey(shortcut, for: target.mode, replacing: 0)
             }
         }
     }
@@ -154,6 +150,7 @@ struct OnboardingView: View {
                         .transition(.opacity)
                 default:
                     Button("Next") { advance() }
+                        .disabled(step == .aiEngine && OpenAICredentials.currentAPIKey().isEmpty)
                         .buttonStyle(AmbitiousPrimaryButtonStyle())
                         .keyboardShortcut(.defaultAction)
                         .transition(.opacity)
@@ -378,7 +375,7 @@ struct OnboardingView: View {
                 Button("Continue") { advance() }
                     .buttonStyle(AmbitiousPrimaryButtonStyle())
                     .keyboardShortcut(.defaultAction)
-                Text("Your sign-in is stored securely in your Mac's Keychain, and Ambitious Prompts keeps working even when you're offline.")
+                Text("Your sign-in is stored securely in your Mac's Keychain. Speech transcription requires an internet connection to OpenAI.")
                     .font(.system(size: 12))
                     .foregroundStyle(AmbitiousDesign.textTertiary)
                     .multilineTextAlignment(.center)
@@ -538,13 +535,22 @@ struct OnboardingView: View {
 
     // MARK: Hotkeys
 
+    private func primaryHotkeyBinding(for mode: DictationMode) -> Binding<String> {
+        Binding(
+            get: { store.config.hotkeyValues(for: mode)[0] },
+            set: { value in
+                guard let shortcut = HotkeyShortcut(storedValue: value) else { return }
+                hotkeyError = store.config.setHotkey(shortcut, for: mode, replacing: 0)
+            }
+        )
+    }
+
     private var dictationKeyStep: some View {
         hotkeyChoiceStep(
             question: "What key do you want to press to start talking?",
             blurb: "This one types your exact words — what you said, as-is, just cleaned up.",
             recommended: .rightOption,
-            selection: $store.config.dictationHotkey,
-            conflictWith: nil,
+            selection: primaryHotkeyBinding(for: .dictate),
             target: .dictation
         )
     }
@@ -554,8 +560,7 @@ struct OnboardingView: View {
             question: "What key do you want to press to do an AI prompt?",
             blurb: "This one doesn't just type what you said — it uses it to write a well-made prompt for an AI.",
             recommended: .rightCommand,
-            selection: $store.config.promptHotkey,
-            conflictWith: store.config.dictationHotkey,
+            selection: primaryHotkeyBinding(for: .prompt),
             target: .prompt
         )
     }
@@ -565,7 +570,6 @@ struct OnboardingView: View {
         blurb: String,
         recommended: HotkeyKey,
         selection: Binding<String>,
-        conflictWith: String?,
         target: HotkeyCaptureTarget
     ) -> some View {
         Entrance(enabled: !renderOnly) { shown in
@@ -592,12 +596,15 @@ struct OnboardingView: View {
                 .frame(width: 360)
                 .riseIn(shown, delay: 0.12)
 
+                Text("You can add more shortcuts in Settings → Hotkeys.")
+                    .font(.caption).foregroundStyle(AmbitiousDesign.textTertiary)
+
                 KeyboardStrip(highlighted: HotkeyKey(rawValue: selection.wrappedValue))
                     .riseIn(shown, delay: 0.2)
 
                 Group {
-                    if let conflictWith, HotkeyShortcut.matches(selection.wrappedValue, conflictWith) {
-                        notice("That shortcut is already doing dictation — pick a different one so both can work.",
+                    if let hotkeyError {
+                        notice(hotkeyError,
                                color: AmbitiousDesign.warning, maxWidth: 400)
                     } else if selection.wrappedValue == HotkeyKey.fn.rawValue {
                         notice("Using fn: set System Settings → Keyboard → “Press 🌐 key” to “Do Nothing” so the system doesn't race Ambitious Prompts.",
@@ -704,9 +711,9 @@ struct OnboardingView: View {
             guard let key = HotkeyKey.allCases.first(where: { $0.keyCode == event.keyCode }),
                   event.modifierFlags.contains(key.flag) else { return event }
             if step == .dictationKey {
-                ConfigStore.shared.config.dictationHotkey = key.rawValue
+                hotkeyError = ConfigStore.shared.config.setHotkey(HotkeyShortcut(preset: key), for: .dictate, replacing: 0)
             } else {
-                ConfigStore.shared.config.promptHotkey = key.rawValue
+                hotkeyError = ConfigStore.shared.config.setHotkey(HotkeyShortcut(preset: key), for: .prompt, replacing: 0)
             }
             return event
         }
@@ -720,11 +727,29 @@ struct OnboardingView: View {
                 AmbitiousIconCircle(symbol: "sparkles", diameter: 72, symbolSize: 28)
                     .popIn(shown)
                 screenText("Connect the AI",
-                           "OpenRouter is optional. Apple handles speech locally by default; an OpenRouter key adds fast cleanup, styling, and Prompt Mode.",
+                           "GPT Live Transcribe is the speech model. Add your OpenAI key to transcribe your voice. An internet connection is required.",
                            maxWidth: 440)
                     .riseIn(shown, delay: 0.12)
 
                 VStack(spacing: 10) {
+                    SecureField("OpenAI API key (sk-proj-…)", text: $store.config.openAIKey)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 14))
+                        .padding(.horizontal, 12)
+                        .frame(height: 40)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AmbitiousDesign.background))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(AmbitiousDesign.borderStrong, lineWidth: 1))
+                    HStack {
+                        Link("Manage OpenAI API keys", destination: URL(string: "https://platform.openai.com/settings/organization/api-keys")!)
+                            .font(.system(size: 13))
+                            .tint(AmbitiousDesign.brandPrimary)
+                            .clickCursor()
+                        Spacer()
+                        Text("$0.017/min")
+                            .font(.system(size: 12))
+                            .foregroundStyle(AmbitiousDesign.textTertiary)
+                    }
+
                     SecureField("OpenRouter API key (sk-or-…)", text: $store.config.openRouterKey)
                         .textFieldStyle(.plain)
                         .font(.system(size: 14))
@@ -751,7 +776,7 @@ struct OnboardingView: View {
                 .frame(width: 360)
                 .riseIn(shown, delay: 0.22)
 
-                Text("No key? That's fine — skip this. Speech stays on your Mac with Apple's transcriber; cleanup can use your Claude Code subscription (claude CLI) if installed, or fall back to Dictionary corrections.")
+                Text("OpenRouter is optional and powers text cleanup and Prompt Mode. Without an OpenRouter key, cleanup can use your Claude Code subscription (claude CLI) or Dictionary corrections. An OpenAI key is required for speech.")
                     .font(.system(size: 12))
                     .foregroundStyle(AmbitiousDesign.textTertiary)
                     .multilineTextAlignment(.center)

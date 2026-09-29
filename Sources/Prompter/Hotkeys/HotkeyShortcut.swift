@@ -102,6 +102,11 @@ struct HotkeyShortcut: Equatable {
         return shortened ? shortcut.shortDisplay : shortcut.display
     }
 
+    static func == (lhs: HotkeyShortcut, rhs: HotkeyShortcut) -> Bool {
+        lhs.keyCode == rhs.keyCode && lhs.modifiers == rhs.modifiers
+            && lhs.isModifierOnly == rhs.isModifierOnly && lhs.mouseButtonNumber == rhs.mouseButtonNumber
+    }
+
     static func matches(_ first: String, _ second: String) -> Bool {
         guard let firstShortcut = HotkeyShortcut(storedValue: first),
               let secondShortcut = HotkeyShortcut(storedValue: second) else { return false }

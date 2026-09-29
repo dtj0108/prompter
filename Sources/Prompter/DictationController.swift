@@ -1,34 +1,30 @@
 import AppKit
 import AVFoundation
 
-/// Orchestrates one dictation session: hotkey → record → transcribe → LLM → paste → log.
+/// Hotkey → GPT Live Transcribe → optional cleanup → output → history.
 final class DictationController {
     static let shared = DictationController()
-
     private let hotkeys = HotkeyMonitor()
     private let recorder = Recorder()
-    private var engine: TranscriptionEngine = SpeechAnalyzerEngine()
 
     private struct Session {
         var mode: DictationMode
         var context: FrontContext
         var startedAt: Date
-        var handsFree: Bool = false
+        var engine: OpenAIRealtimeTranscriber
+        var liveText: LiveTextSession?
     }
 
     private var session: Session?
     private var busy = false
     var hasInFlightDictation: Bool { session != nil || busy }
     var isPaused = false
-    /// True while onboarding's key-picker steps are on screen: pressing a
-    /// modifier key there is choosing a hotkey, not starting a dictation.
     var hotkeySelectionActive = false {
         didSet {
             if hotkeySelectionActive != oldValue { hotkeys.resetState() }
         }
     }
     private var maxDurationTimer: DispatchWorkItem?
-    /// Bumped on every session start/stop; async startup steps abort if it moved.
     private var sessionGen = 0
 
     func start() {
@@ -36,57 +32,29 @@ final class DictationController {
             DispatchQueue.main.async { self?.beginSession(mode: mode, handsFree: handsFree) }
         }
         hotkeys.onCommit = { [weak self] in
-            DispatchQueue.main.async { self?.commitSession() }
+            DispatchQueue.main.async { self?.commitSession(resetHotkeyState: false) }
         }
         hotkeys.onAbort = { [weak self] in
             DispatchQueue.main.async { self?.abortSession() }
         }
         hotkeys.start()
-
-        recorder.onLevel = { level in
-            HUD.shared.level(level)
-        }
-
-        // Mic disappeared mid-recording (device switch, sleep): salvage what we heard.
+        recorder.onLevel = { level in HUD.shared.level(level) }
         recorder.onInterrupted = { [weak self] in
-            DispatchQueue.main.async {
-                guard let self, self.session != nil else { return }
-                Log.write("audio engine configuration changed mid-recording — committing early")
-                self.commitSession()
-            }
+            DispatchQueue.main.async { self?.commitSession(wasInterrupted: true) }
         }
-
-        // The mic is producing exact digital zeros: something upstream is
-        // muting it — recover mid-session instead of ending in "Didn't catch that".
         recorder.onDigitalSilence = { [weak self] in
             DispatchQueue.main.async { self?.recoverFromSilentCapture() }
         }
-
-        // Global NSEvent monitors registered before Accessibility was granted never
-        // start delivering events — re-register once the grant appears.
         if !AXIsProcessTrusted() {
             let timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] timer in
                 if AXIsProcessTrusted() {
                     timer.invalidate()
-                    Log.write("accessibility granted — re-registering hotkey monitors")
                     self?.hotkeys.start()
                 }
             }
             RunLoop.main.add(timer, forMode: .common)
         }
-
-        // Warm up the speech model check in the background.
-        Task {
-            do {
-                try await engine.prepare()
-                Log.write("speech engine ready")
-            } catch {
-                Log.write("speech engine prepare failed: \(error)")
-            }
-        }
     }
-
-    // MARK: - Session lifecycle
 
     private func beginSession(mode: DictationMode, handsFree: Bool = false) {
         guard !hotkeySelectionActive else { return }
@@ -104,170 +72,170 @@ final class DictationController {
             return
         }
         guard session == nil else { return }
-
+        guard !OpenAICredentials.currentAPIKey().isEmpty else {
+            HUD.shared.flash(.failure("Add your OpenAI key in Settings → AI models"), for: 4)
+            WindowRouter.shared.openSettings()
+            return
+        }
         guard Recorder.micAuthorized() else {
             Task {
-                let granted = await Recorder.requestMicAccess()
-                if !granted {
+                if !(await Recorder.requestMicAccess()) {
                     HUD.shared.flash(.failure("Grant microphone access in Settings"))
                 }
             }
             return
         }
-
-        // Before engine.begin reads recorder.inputFormat — toggling voice
-        // processing changes that format.
-        recorder.applyVoiceIsolation(ConfigStore.shared.config.voiceIsolationEnabled)
-
+        let config = ConfigStore.shared.config
+        recorder.applyVoiceIsolation(config.voiceIsolationEnabled)
         let context = ContextDetector.capture()
-        // Overlap the TLS handshake with the user talking.
+        let wantsLiveTyping = mode == .dictate && config.liveTypingEnabled
+        let liveText = wantsLiveTyping ? LiveTextSession.capture(shortcuts: config.shortcuts(for: .dictate)) : nil
+        let engine = OpenAIRealtimeTranscriber()
+        engine.lowLatency = wantsLiveTyping
         LLMClient.shared.prewarmConnection()
-        session = Session(mode: mode, context: context, startedAt: Date(), handsFree: handsFree)
+        session = Session(mode: mode, context: context, startedAt: Date(), engine: engine, liveText: liveText)
         sessionGen += 1
         let gen = sessionGen
+        engine.onTranscript = { [weak self] text in
+            DispatchQueue.main.async {
+                guard let self, self.sessionGen == gen else { return }
+                self.session?.liveText?.receive(text)
+            }
+        }
+        engine.onFailure = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self, self.sessionGen == gen else { return }
+                self.commitSession(wasInterrupted: true)
+            }
+        }
         playSound("Pop")
-
         Task { @MainActor in
             do {
                 try await engine.begin(inputFormat: recorder.inputFormat)
-                // The user may have released/cancelled while the engine was starting.
+                // Only touch this session's engine after an async startup; a new
+                // hotkey session may have started while this one was cancelled.
                 guard gen == sessionGen, session != nil else {
                     engine.cancel()
+                    liveText?.cancel()
                     return
                 }
-                recorder.onBuffer = { [weak self] buffer, _ in
-                    self?.engine.feed(buffer)
-                }
+                recorder.onBuffer = { [weak engine] buffer, _ in engine?.feed(buffer) }
                 try recorder.start()
                 HUD.shared.show(.listening(mode, handsFree: handsFree))
-
-                let maxSec = Double(ConfigStore.shared.config.maxRecordingSec)
                 let work = DispatchWorkItem { [weak self] in self?.commitSession() }
                 maxDurationTimer = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + maxSec, execute: work)
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(config.maxRecordingSec), execute: work)
             } catch {
-                Log.write("begin failed: \(error)")
-                if gen == sessionGen {
-                    session = nil
-                    recorder.stop()
-                    recorder.discardRecording()
-                    engine.cancel()
-                    HUD.shared.flash(.failure("Couldn't start recording"))
-                    notifyAuthIfIdle()
-                }
+                engine.cancel()
+                liveText?.cancel()
+                guard gen == sessionGen else { return }
+                session = nil
+                recorder.stop()
+                recorder.onBuffer = nil
+                HUD.shared.flash(.failure("Couldn't start GPT Live Transcribe — check your key and connection"), for: 4)
+                Log.write("dictation begin failed: \(error)")
+                hotkeys.resetState()
+                notifyAuthIfIdle()
             }
         }
     }
 
-    private func commitSession() {
+    private func commitSession(wasInterrupted: Bool = false, resetHotkeyState: Bool = true) {
         guard let current = session, !busy else { return }
         session = nil
         sessionGen += 1
         busy = true
         maxDurationTimer?.cancel()
-
+        if resetHotkeyState { hotkeys.resetState() }
         let audioSec = recorder.stop()
         let heardOnlySilence = recorder.heardOnlySilence
-        let recordingURL = recorder.takeRecordingURL()
         recorder.onBuffer = nil
         playSound("Tink")
-
-        // Too-short accidental presses: throw away.
-        if audioSec < 0.35 {
-            if let recordingURL { try? FileManager.default.removeItem(at: recordingURL) }
+        if audioSec < 0.35 && !wasInterrupted && current.engine.availableText.isEmpty {
+            current.engine.cancel()
+            current.liveText?.cancel()
             busy = false
-            engine.cancel()
             HUD.shared.hide()
             notifyAuthIfIdle()
             return
         }
-
         HUD.shared.show(.processing(current.mode))
-
-        Task {
+        Task { @MainActor in
             defer {
-                if let recordingURL { try? FileManager.default.removeItem(at: recordingURL) }
+                busy = false
+                notifyAuthIfIdle()
             }
             let sttStart = Date()
-            let transcription = await self.transcribe(recordingURL: recordingURL)
-            let sttMs = Int(Date().timeIntervalSince(sttStart) * 1000)
-            let transcript = transcription.text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            guard !transcript.isEmpty else {
-                await MainActor.run {
-                    if heardOnlySilence {
-                        HUD.shared.flash(.failure("No mic signal — recheck Microphone permission"), for: 4)
-                    } else {
-                        HUD.shared.flash(.failure("Didn't catch that"))
-                    }
-                    self.busy = false
-                    self.notifyAuthIfIdle()
-                }
+            let transcription: OpenAIRealtimeTranscriptionResult
+            do {
+                transcription = try await current.engine.finishResult()
+            } catch {
+                current.engine.cancel()
+                current.liveText?.cancel()
+                Log.write("GPT Live Transcribe failed: \(error)")
+                let message = heardOnlySilence
+                    ? "No mic signal — recheck Microphone permission"
+                    : "GPT Live Transcribe failed — check your OpenAI key and connection"
+                HUD.shared.flash(.failure(message), for: 4)
                 return
             }
-
-            let rawTranscript = transcript
-            let (finalText, llmMs, usedLLM, cleanupCostUSD) = await self.transform(transcript: rawTranscript, session: current)
-
-            await MainActor.run {
-                // Paste wherever the user's cursor is NOW: same app as when they
-                // dictated, or a different app they clicked into while we were
-                // polishing. Paste by default — even when accessibility can't
-                // confirm a text cursor — and go clipboard-only ONLY when focus
-                // is provably somewhere text can't go (desktop, a button, …).
+            let sttMs = Int(Date().timeIntervalSince(sttStart) * 1000)
+            let rawTranscript = transcription.text
+            // Show the complete raw text while optional cleanup runs. Subsequent
+            // edits/focus changes suspend the session, including during cleanup.
+            current.liveText?.receive(rawTranscript)
+            let output: (String, Int, Bool, Double)
+            if transcription.isPartial {
+                output = (rawTranscript, 0, false, 0)
+            } else {
+                output = await transform(transcript: rawTranscript, session: current)
+            }
+            let (transformedText, llmMs, usedLLM, cleanupCostUSD) = output
+            let finalText = transformedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? rawTranscript : transformedText
+            let pasteResult: PasteResult
+            if let liveText = current.liveText {
+                if liveText.finish(finalText) {
+                    pasteResult = .pasted
+                } else {
+                    _ = Paster.insert(finalText, allowPaste: false)
+                    pasteResult = .clipboardOnly(reason: "Live typing stopped — finished text copied, ⌘V to paste")
+                }
+            } else {
+                // Normal mode and unsupported fields retain the current paste-at-cursor behavior.
                 let front = NSWorkspace.shared.frontmostApplication
                 let sameApp = current.context.bundleId.isEmpty
                     || (front?.bundleIdentifier == current.context.bundleId
                         && front?.processIdentifier == current.context.pid)
                 let canPasteHere = sameApp || ContextDetector.focusedTextTarget() != .rejectsText
-                let targetPID = front?.processIdentifier
-
-                var pasteResult = Paster.insert(finalText, targetPID: targetPID, allowPaste: canPasteHere)
-                if !canPasteHere {
-                    pasteResult = .clipboardOnly(reason: "No text cursor — ⌘V to paste")
+                let result = Paster.insert(finalText, targetPID: front?.processIdentifier, allowPaste: canPasteHere)
+                pasteResult = canPasteHere ? result : .clipboardOnly(reason: "No text cursor — ⌘V to paste")
+            }
+            let words = finalText.split(whereSeparator: { $0.isWhitespace }).count
+            InsightsStore.shared.append(InsightEvent(
+                ts: current.startedAt, app: current.context.appName,
+                bundleId: current.context.bundleId, context: current.context.style.id,
+                mode: current.mode.rawValue, audioSec: audioSec, words: words,
+                sttMs: sttMs, llmMs: llmMs,
+                engine: "openai/\(OpenAIRealtimeTranscriber.defaultModel)" + (transcription.isPartial ? "-partial" : ""),
+                costUSD: transcription.costUSD + cleanupCostUSD, rawText: rawTranscript, finalText: finalText
+            ))
+            switch pasteResult {
+            case .pasted:
+                if transcription.isPartial {
+                    HUD.shared.flash(.failure("Connection interrupted — recovered \(words) words"), for: 4)
+                } else {
+                    HUD.shared.flash(.success(usedLLM ? "\(words) words" : "\(words) words (raw — AI skipped)"))
                 }
-                let words = finalText.split(whereSeparator: { $0.isWhitespace }).count
-
-                InsightsStore.shared.append(InsightEvent(
-                    ts: current.startedAt,
-                    app: current.context.appName,
-                    bundleId: current.context.bundleId,
-                    context: current.context.style.id,
-                    mode: current.mode.rawValue,
-                    audioSec: audioSec,
-                    words: words,
-                    sttMs: sttMs,
-                    llmMs: llmMs,
-                    engine: transcription.engine,
-                    costUSD: transcription.costUSD + cleanupCostUSD,
-                    rawText: rawTranscript,
-                    finalText: finalText
-                ))
-
-                switch pasteResult {
-                case .pasted:
-                    let label = usedLLM ? "\(words) words" : "\(words) words (raw — AI skipped)"
-                    HUD.shared.flash(.success(label))
-                case .clipboardOnly(let reason):
-                    HUD.shared.flash(.failure(reason), for: 3.5)
-                }
-                self.busy = false
-                self.notifyAuthIfIdle()
+            case .clipboardOnly(let reason):
+                let label = transcription.isPartial ? "Connection interrupted — received words copied" : reason
+                HUD.shared.flash(.failure(label), for: 4)
             }
         }
     }
 
-    /// A real room never yields sustained exact zeros — the input is being muted
-    /// upstream. Apple's voice-processing DSP (`setVoiceProcessingEnabled`) is the
-    /// known offender on some Macs: drop it, restart capture within the running
-    /// session, and remember the choice so later dictations start clean.
     private func recoverFromSilentCapture() {
-        guard session != nil, !busy else { return }
-        guard ConfigStore.shared.config.voiceIsolationEnabled else {
-            Log.write("mic delivering pure silence with voice isolation off — microphone grant is likely broken")
-            return
-        }
-        Log.write("mic delivering pure silence — disabling voice isolation and restarting capture")
+        guard session != nil, !busy, ConfigStore.shared.config.voiceIsolationEnabled else { return }
         recorder.stop()
         recorder.applyVoiceIsolation(false)
         ConfigStore.shared.config.voiceIsolationEnabled = false
@@ -275,68 +243,21 @@ final class DictationController {
             try recorder.start()
         } catch {
             Log.write("restart after silent capture failed: \(error)")
-            abortSession()
-            HUD.shared.flash(.failure("Couldn't restart the microphone"))
+            commitSession(wasInterrupted: true)
         }
     }
 
     private func abortSession() {
-        guard session != nil else { return }
+        guard let current = session else { return }
         session = nil
         sessionGen += 1
         maxDurationTimer?.cancel()
         recorder.stop()
-        recorder.discardRecording()
         recorder.onBuffer = nil
-        engine.cancel()
+        current.engine.cancel()
+        current.liveText?.cancel()
         HUD.shared.hide()
         notifyAuthIfIdle()
-    }
-
-    // MARK: - Transform
-
-    /// Apple's local analyzer is the fast default. Whisper Turbo is used only
-    /// when the user explicitly enables cloud transcription; Apple continues
-    /// in parallel as its fallback.
-    private func transcribe(recordingURL: URL?) async -> (text: String, costUSD: Double, engine: String) {
-        async let localTranscript = engine.finish()
-        let config = ConfigStore.shared.config
-        let useCloudTranscription = config.useOpenRouterTranscription
-            && !config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-
-        if useCloudTranscription, let recordingURL {
-            do {
-                let cloud = try await OpenRouterTranscriber.transcribeFile(
-                    recordingURL,
-                    model: config.openRouterTranscriptionModel
-                )
-                // Always let the parallel analyzer shut down cleanly before a
-                // new recording can start. It also protects against Whisper's
-                // known silent-audio "Thank you" hallucination.
-                let local = ((try? await localTranscript) ?? "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if OpenRouterTranscriber.isLikelySilenceHallucination(cloud.text),
-                   !local.isEmpty,
-                   !OpenRouterTranscriber.isLikelySilenceHallucination(local) {
-                    Log.write("OpenRouter returned a likely silence hallucination; using local transcript")
-                    return (local, 0, "apple-speechanalyzer-fallback")
-                }
-                return (
-                    cloud.text,
-                    cloud.costUSD,
-                    "openrouter/\(config.openRouterTranscriptionModel)"
-                )
-            } catch {
-                Log.write("OpenRouter transcription failed; using local Apple transcript: \(error)")
-            }
-        }
-
-        do {
-            return (try await localTranscript, 0, "apple-speechanalyzer")
-        } catch {
-            Log.write("local STT finish failed: \(error)")
-            return ("", 0, "apple-speechanalyzer")
-        }
     }
 
     /// Returns (finalText, llmMs, usedLLM, costUSD). Never loses the transcript: falls

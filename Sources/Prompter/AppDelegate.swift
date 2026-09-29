@@ -144,8 +144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func hotkeyInfoText() -> String {
         let config = ConfigStore.shared.config
-        let dictate = HotkeyShortcut.display(for: config.dictationHotkey, fallback: .rightOption, shortened: true)
-        let prompt = HotkeyShortcut.display(for: config.promptHotkey, fallback: .rightCommand, shortened: true)
+        let dictate = config.hotkeySummary(for: .dictate)
+        let prompt = config.hotkeySummary(for: .prompt)
         let verb = config.tapToLockEnabled ? "Hold or tap" : "Hold"
         return "\(verb) \(dictate) to dictate  •  \(prompt) for Prompt Mode"
     }

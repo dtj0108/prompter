@@ -1,0 +1,21 @@
+{
+  "name": "prompter-intro-video",
+  "private": true,
+  "description": "Remotion source for the Prompter product intro video",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts PrompterIntro out/prompter-intro.mp4",
+    "still": "remotion still src/index.ts PrompterIntro"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@remotion/google-fonts": "^4.0.491",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "typescript": "~5.9.0"
+  }
+}

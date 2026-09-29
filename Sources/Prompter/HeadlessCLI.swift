@@ -20,7 +20,7 @@ enum HeadlessCLI {
         // caller already treats that as signed-out.
         SecKeychainSetUserInteractionAllowed(false)
 
-        if ["--transcribe", "--transcribe-openrouter"].contains(args[1]),
+        if ["--transcribe", "--transcribe-openai"].contains(args[1]),
            !AmbitiousAuthManager.hasUsableCachedIdentity() {
             exitCode = 3
             FileHandle.standardError.write(Data(
@@ -30,31 +30,36 @@ enum HeadlessCLI {
         }
 
         switch args[1] {
-        case "--transcribe":
+        case "--import-openai-key":
             guard args.count >= 3 else {
-                FileHandle.standardError.write(Data("usage: Prompter --transcribe <audio-file>\n".utf8))
+                FileHandle.standardError.write(Data("usage: Prompter --import-openai-key <env-file>\n".utf8))
+                return true
+            }
+            let url = URL(fileURLWithPath: args[2])
+            guard let key = OpenAICredentials.apiKey(fromEnvironmentFileAt: url) else {
+                exitCode = 1
+                FileHandle.standardError.write(Data("OPENAI_API_KEY was not found in the selected file.\n".utf8))
+                return true
+            }
+            ConfigStore.shared.config.openAIKey = key
+            print("Saved OPENAI_API_KEY to Prompter's private config.")
+            return true
+
+        case "--transcribe", "--transcribe-openai", "--test-transcribe-openai", "--test-stream-openai":
+            guard args.count >= 3 else {
+                FileHandle.standardError.write(Data("usage: Prompter \(args[1]) <audio-file>\n".utf8))
                 return true
             }
             runBlocking {
                 let url = URL(fileURLWithPath: args[2])
-                let text = try await SpeechAnalyzerEngine.transcribeFile(url)
-                print(text)
+                let result = try await OpenAIRealtimeTranscriber.transcribeFile(url, paced: args[1] == "--test-stream-openai")
+                print(result.text)
             }
             return true
 
         case "--transcribe-openrouter":
-            guard args.count >= 3 else {
-                FileHandle.standardError.write(Data("usage: Prompter --transcribe-openrouter <wav-file>\n".utf8))
-                return true
-            }
-            runBlocking {
-                let url = URL(fileURLWithPath: args[2])
-                let result = try await OpenRouterTranscriber.transcribeFile(
-                    url,
-                    model: ConfigStore.shared.config.openRouterTranscriptionModel
-                )
-                print(result.text)
-            }
+            exitCode = 2
+            FileHandle.standardError.write(Data("Only GPT Live Transcribe is supported. Use --transcribe <audio-file>.\n".utf8))
             return true
 
         case "--test-llm":
@@ -128,6 +133,10 @@ enum HeadlessCLI {
             return true
 
 #if DEBUG
+        case "--test-live-insertion":
+            exitCode = LiveTextSession.verifyFixture() ? 0 : 1
+            return true
+
         case "--test-ambitious-refresh":
             let auth = AmbitiousAuthManager.shared
             let result = HeadlessResultBox<Bool>()

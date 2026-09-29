@@ -11,7 +11,13 @@ struct SettingsView: View {
     @State private var inputMonStatus = CGPreflightListenEventAccess()
     @State private var testResult = ""
     @State private var testing = false
-    @State private var hotkeyCaptureTarget: HotkeyCaptureTarget?
+    private struct HotkeyEditRequest: Identifiable {
+        let id = UUID()
+        let target: HotkeyCaptureTarget
+        var index: Int?
+    }
+    @State private var hotkeyEditRequest: HotkeyEditRequest?
+    @State private var hotkeyError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,7 +25,7 @@ struct SettingsView: View {
             Section("Ambitious account") {
                 if let identity = auth.identity {
                     LabeledContent("Signed in", value: identity.email ?? "Ambitious member")
-                    Text("This sign-in only confirms your identity. Its tokens cannot read or post Ambitious content, and cached identity keeps Ambitious Prompts working offline.")
+                    Text("This sign-in only confirms your identity. Its tokens cannot read or post Ambitious content, and your saved sign-in does not need a network check before dictation.")
                         .font(.caption).foregroundStyle(.secondary)
                     HStack {
                         Button(auth.activity == .refreshing ? "Checking…" : "Check account") {
@@ -49,40 +55,37 @@ struct SettingsView: View {
             }
 
             Section("Hotkeys") {
-                hotkeyMenuRow("Dictation", selection: $store.config.dictationHotkey, target: .dictation)
-                hotkeyMenuRow("Prompt Mode", selection: $store.config.promptHotkey, target: .prompt)
+                hotkeyGroup("Dictation", target: .dictation)
+                hotkeyGroup("Prompt Mode", target: .prompt)
+                if let hotkeyError {
+                    Text(hotkeyError).font(.caption).foregroundStyle(.orange)
+                }
                 Toggle("Tap for hands-free (tap again to finish)", isOn: $store.config.tapToLockEnabled).clickCursor()
-                Text("Choose a quick option or click Custom… and press a key, key combination, middle-click, or extra mouse button. Hold = push-to-talk; tap = hands-free. Esc cancels. Changes apply immediately.")
+                Text("Add as many shortcuts as you want. Use a key, key combination, middle-click, or extra mouse button. Hold and release the same shortcut for push-to-talk. In hands-free mode, any shortcut for that mode finishes recording. Esc cancels. Changes apply immediately.")
                     .font(.caption).foregroundStyle(.secondary)
-                if HotkeyShortcut.matches(store.config.dictationHotkey, store.config.promptHotkey) {
-                    Text("⚠️ Both modes use the same shortcut — Prompt Mode will never trigger.")
+                if !store.config.conflictingHotkeys.isEmpty {
+                    Text("A shortcut is assigned to both modes. Dictation takes priority; edit one of the duplicate assignments.")
                         .font(.caption).foregroundStyle(.orange)
                 }
-                if store.config.dictationHotkey == HotkeyKey.fn.rawValue || store.config.promptHotkey == HotkeyKey.fn.rawValue {
+                if (store.config.hotkeyValues(for: .dictate) + store.config.hotkeyValues(for: .prompt)).contains(HotkeyKey.fn.rawValue) {
                     Text("Using fn: set System Settings → Keyboard → “Press 🌐 key” to “Do Nothing” so the system doesn't race Ambitious Prompts.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
 
             Section("AI models") {
+                SecureField("OpenAI API key (sk-proj-…)", text: $store.config.openAIKey)
+                LabeledContent("Transcription model", value: OpenAIRealtimeTranscriber.defaultModel)
+                Text("GPT Live Transcribe is the only speech model. An OpenAI key and internet connection are required. Microphone audio streams directly to OpenAI.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Link("Manage OpenAI API keys", destination: URL(string: "https://platform.openai.com/settings/organization/api-keys")!)
+                    .font(.caption)
+                    .clickCursor()
+
                 Toggle("Clean up dictation with AI", isOn: $store.config.llmCleanupEnabled).clickCursor()
                 Text("Off = raw transcript with dictionary corrections only.")
                     .font(.caption).foregroundStyle(.secondary)
                 SecureField("OpenRouter API key (sk-or-…)", text: $store.config.openRouterKey)
-                Toggle("Use OpenRouter for transcription", isOn: $store.config.useOpenRouterTranscription).clickCursor()
-                Text("Off = fast, private Apple transcription. OpenRouter remains available for cleanup and Prompt Mode.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Picker("Transcription model", selection: $store.config.openRouterTranscriptionModel) {
-                    ForEach(TranscriptionModelCatalog.choices) { choice in
-                        Text("\(choice.name) — \(choice.detail)").tag(choice.id)
-                    }
-                    if TranscriptionModelCatalog.choice(for: store.config.openRouterTranscriptionModel) == nil {
-                        Text("Custom — \(store.config.openRouterTranscriptionModel)").tag(store.config.openRouterTranscriptionModel)
-                    }
-                }
-                .pickerStyle(.menu)
-                .disabled(!store.config.useOpenRouterTranscription)
-                .clickCursor()
                 Picker("Cleanup model", selection: $store.config.openRouterCleanupModel) {
                     ForEach(AIModelCatalog.choices) { choice in
                         Text("\(choice.name) — \(choice.detail)").tag(choice.id)
@@ -103,11 +106,9 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.menu)
                 .clickCursor()
-                Text("Gemini Flash Lite is the fast, inexpensive default for cleanup and Prompt Mode. Cloud transcription is a separate opt-in; Apple stays the default.")
+                Text("OpenRouter is optional and powers text cleanup and Prompt Mode. Gemini Flash Lite is the fast, inexpensive cleanup and Prompt Mode default.")
                     .font(.caption).foregroundStyle(.secondary)
                 DisclosureGroup("Use custom OpenRouter model IDs") {
-                    TextField("Transcription model ID", text: $store.config.openRouterTranscriptionModel)
-                        .textFieldStyle(.roundedBorder)
                     TextField("Cleanup model ID", text: $store.config.openRouterCleanupModel)
                         .textFieldStyle(.roundedBorder)
                     TextField("Prompt Mode model ID", text: $store.config.openRouterModel)
@@ -118,7 +119,7 @@ struct SettingsView: View {
                     .clickCursor()
                 Text("“:free” models may be request-limited and may let the provider train on your text.")
                     .font(.caption).foregroundStyle(.secondary)
-                LabeledContent("Backend in use", value: LLMClient.shared.backendDescription)
+                LabeledContent("Cleanup / Prompt Mode", value: LLMClient.shared.backendDescription)
                 HStack {
                     Button(testing ? "Testing…" : "Test AI backend") {
                         runBackendTest()
@@ -173,6 +174,9 @@ struct SettingsView: View {
             }
 
             Section("Behavior") {
+                Toggle("Type live while I speak", isOn: $store.config.liveTypingEnabled).clickCursor()
+                Text("Show words in the focused text box during dictation. AI cleanup updates only those words when you finish. Moving the cursor, editing, or changing focus stops live updates and copies the finished text. Unsupported text boxes use paste when you finish. Prompt Mode always inserts at the end.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("Focus on my voice", isOn: $store.config.voiceIsolationEnabled).clickCursor()
                 Text("Apple's on-device voice isolation: keys on the person speaking at the Mac and suppresses background noise and other voices. For even stronger isolation, pick “Voice Isolation” under Mic Mode in Control Center while dictating.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -251,49 +255,66 @@ struct SettingsView: View {
             default: updater.checkForUpdates()
             }
         }
-        .sheet(item: $hotkeyCaptureTarget) { target in
-            HotkeyRecorderSheet(target: target) { shortcut in
-                switch target {
-                case .dictation:
-                    store.config.dictationHotkey = shortcut.storedValue
-                case .prompt:
-                    store.config.promptHotkey = shortcut.storedValue
-                }
+        .sheet(item: $hotkeyEditRequest) { request in
+            HotkeyRecorderSheet(target: request.target) { shortcut in
+                hotkeyError = store.config.setHotkey(shortcut, for: request.target.mode, replacing: request.index)
             }
         }
     }
 
-    private func hotkeyMenuRow(
-        _ title: String,
-        selection: Binding<String>,
-        target: HotkeyCaptureTarget
-    ) -> some View {
-        LabeledContent(title) {
-            HStack(spacing: 8) {
-                Menu {
-                    ForEach(HotkeyKey.allCases) { key in
-                        Button {
-                            selection.wrappedValue = key.rawValue
-                        } label: {
-                            if selection.wrappedValue == key.rawValue {
-                                Label(key.display, systemImage: "checkmark")
-                            } else {
-                                Text(key.display)
+    private func hotkeyGroup(_ title: String, target: HotkeyCaptureTarget) -> some View {
+        let values = store.config.hotkeyValues(for: target.mode)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.headline)
+            ForEach(Array(values.enumerated()), id: \.element) { index, value in
+                LabeledContent("Shortcut \(index + 1)") {
+                    HStack(spacing: 8) {
+                        Menu {
+                            ForEach(HotkeyKey.allCases) { key in
+                                Button {
+                                    hotkeyError = store.config.setHotkey(
+                                        HotkeyShortcut(preset: key), for: target.mode, replacing: index
+                                    )
+                                } label: {
+                                    if value == key.rawValue {
+                                        Label(key.display, systemImage: "checkmark")
+                                    } else {
+                                        Text(key.display)
+                                    }
+                                }
+                                .disabled(store.config.hotkeyConflict(HotkeyShortcut(preset: key), for: target.mode, replacing: index) != nil)
                             }
+                        } label: {
+                            Text(HotkeyShortcut.display(for: value, fallback: target == .dictation ? .rightOption : .rightCommand))
                         }
+                        .clickCursor()
+                        Button("Custom…") {
+                            hotkeyError = nil
+                            hotkeyEditRequest = HotkeyEditRequest(target: target, index: index)
+                        }
+                        .buttonStyle(.bordered).controlSize(.small).clickCursor()
+                        Button {
+                            store.config.removeHotkey(at: index, for: target.mode)
+                            hotkeyError = nil
+                        } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(values.count == 1)
+                        .accessibilityLabel("Remove \(title) shortcut \(index + 1)")
+                        .help(values.count == 1 ? "Keep at least one shortcut for each mode" : "Remove shortcut")
+                        .clickCursor()
                     }
-                } label: {
-                    Text(HotkeyShortcut.display(
-                        for: selection.wrappedValue,
-                        fallback: target == .dictation ? .rightOption : .rightCommand
-                    ))
                 }
-                .clickCursor()
-                Button("Custom…") { hotkeyCaptureTarget = target }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .clickCursor()
             }
+            Button {
+                hotkeyError = nil
+                hotkeyEditRequest = HotkeyEditRequest(target: target)
+            } label: {
+                Label("Add shortcut…", systemImage: "plus")
+            }
+            .accessibilityLabel("Add \(title) shortcut")
+            .buttonStyle(.bordered).controlSize(.small).clickCursor()
         }
     }
 

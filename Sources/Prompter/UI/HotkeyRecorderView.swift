@@ -6,6 +6,7 @@ enum HotkeyCaptureTarget: String, Identifiable {
     case prompt
 
     var id: String { rawValue }
+    var mode: DictationMode { self == .dictation ? .dictate : .prompt }
 
     var title: String {
         switch self {

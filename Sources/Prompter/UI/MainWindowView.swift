@@ -232,10 +232,10 @@ struct HomeView: View {
     }
 
     private var dictationKeyName: String {
-        HotkeyShortcut.display(for: config.config.dictationHotkey, fallback: .rightOption, shortened: true)
+        config.config.hotkeySummary(for: .dictate)
     }
     private var promptKeyName: String {
-        HotkeyShortcut.display(for: config.config.promptHotkey, fallback: .rightCommand, shortened: true)
+        config.config.hotkeySummary(for: .prompt)
     }
 
     private func hotkeyCard(symbol: String, tint: Color, title: String, key: String, detail: String) -> some View {
@@ -244,11 +244,11 @@ struct HomeView: View {
                 Image(systemName: symbol).foregroundStyle(tint)
                 Text(title).font(.headline)
                 Spacer()
-                Text(key)
+            }
+            Text(key)
                     .font(.system(.callout, design: .rounded).weight(.semibold))
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
-            }
             Text(detail).font(.callout).foregroundStyle(.secondary)
         }
         .padding(14)

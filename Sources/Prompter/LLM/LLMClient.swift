@@ -82,15 +82,11 @@ final class LLMClient {
         let orKey = ConfigStore.shared.config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !orKey.isEmpty {
             let config = ConfigStore.shared.config
-            let transcription = ConfigStore.shared.config.openRouterTranscriptionModel
             let cleanup = config.openRouterCleanupModel
             let prompt = config.openRouterModel
-            let transcriptionName = config.useOpenRouterTranscription
-                ? (TranscriptionModelCatalog.choice(for: transcription)?.name ?? transcription)
-                : "Apple local"
             let cleanupName = AIModelCatalog.choice(for: cleanup)?.name ?? cleanup
             let promptName = AIModelCatalog.choice(for: prompt)?.name ?? prompt
-            return "OpenRouter (\(transcriptionName) STT · \(cleanupName) cleanup · \(promptName) prompt)"
+            return "OpenRouter (\(cleanupName) cleanup · \(promptName) prompt)"
         }
         if let path = locateCLI() { return "claude CLI (\(path))" }
         return "none found"

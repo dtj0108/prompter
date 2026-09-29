@@ -59,13 +59,21 @@ final class HotkeyMonitor {
         case idle
         case pending(mode: DictationMode, shortcut: HotkeyShortcut)
         case active(mode: DictationMode, shortcut: HotkeyShortcut)
-        /// Hands-free: recording continues after the tap; next tap of the same key commits.
+        /// Hands-free: recording continues after the tap; any shortcut for this mode commits.
         case latched(mode: DictationMode, shortcut: HotkeyShortcut)
+        /// A finishing press must be released before another shortcut can begin.
+        case releasing(shortcut: HotkeyShortcut)
     }
 
     private var state: State = .idle
     private var holdTimer: DispatchWorkItem?
     private var monitors: [Any] = []
+
+    private let configProvider: () -> Config
+
+    init(configProvider: @escaping () -> Config = { ConfigStore.shared.config }) {
+        self.configProvider = configProvider
+    }
 
     func start() {
         stop()
@@ -125,23 +133,19 @@ final class HotkeyMonitor {
         state = .idle
     }
 
-    private var dictationShortcut: HotkeyShortcut {
-        HotkeyShortcut(storedValue: ConfigStore.shared.config.dictationHotkey)
-            ?? HotkeyShortcut(preset: .rightOption)
-    }
-    private var promptShortcut: HotkeyShortcut {
-        HotkeyShortcut(storedValue: ConfigStore.shared.config.promptHotkey)
-            ?? HotkeyShortcut(preset: .rightCommand)
-    }
-
     private var candidates: [(HotkeyShortcut, DictationMode)] {
-        [
-            (dictationShortcut, .dictate),
-            (promptShortcut, .prompt),
-        ]
+        let config = configProvider()
+        let dictation = config.shortcuts(for: .dictate)
+        // Preserve Dictation priority for any conflicting legacy config.
+        let prompt = config.shortcuts(for: .prompt).filter { !dictation.contains($0) }
+        return dictation.map { ($0, .dictate) } + prompt.map { ($0, .prompt) }
     }
 
-    private func handleFlagsChanged(_ event: NSEvent) {
+    private func stoppingShortcuts(for mode: DictationMode, startedWith shortcut: HotkeyShortcut) -> [HotkeyShortcut] {
+        [shortcut] + candidates.filter { $0.1 == mode }.map { $0.0 }
+    }
+
+    func handleFlagsChanged(_ event: NSEvent) {
         let code = event.keyCode
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
@@ -188,18 +192,29 @@ final class HotkeyMonitor {
                 onCommit?()
             }
 
-        case .latched(_, let shortcut):
-            // Next PRESS of the same key (flag present) finishes the hands-free session.
+        case .latched(let mode, let shortcut):
+            // A PRESS of any shortcut for this mode finishes the hands-free session.
             // Its paired release event arrives in .idle with the flag absent and is
             // ignored by the idle guard there.
-            if shortcut.isModifierOnly, code == shortcut.keyCode, shortcut.modifierIsDown(in: event) {
-                state = .idle
+            if let finishing = stoppingShortcuts(for: mode, startedWith: shortcut).first(where: {
+                $0.isModifierOnly && code == $0.keyCode && $0.modifierIsDown(in: event)
+                    && flags.intersection(HotkeyShortcut.relevantModifiers) == $0.modifiers
+            }) {
+                state = .releasing(shortcut: finishing)
                 onCommit?()
+            }
+
+        case .releasing(let shortcut):
+            guard !shortcut.isMouseButton else { return }
+            if shortcut.isModifierOnly {
+                if code == shortcut.keyCode, !shortcut.modifierIsDown(in: event) { state = .idle }
+            } else if !shortcut.requiredModifiersAreDown(in: event) {
+                state = .idle
             }
         }
     }
 
-    private func handleKeyDown(_ event: NSEvent) {
+    func handleKeyDown(_ event: NSEvent) {
         switch state {
         case .idle:
             guard !event.isARepeat else { return }
@@ -214,9 +229,13 @@ final class HotkeyMonitor {
                !shortcut.isModifierOnly,
                event.keyCode == shortcut.keyCode,
                event.isARepeat { return }
-            // Any real key while the modifier is held = a normal shortcut. Stand down.
+            // A registered combination can supersede its pending modifier-only
+            // shortcut. Other keys remain normal shortcuts and cancel the gesture.
             holdTimer?.cancel()
             state = .idle
+            if !event.isARepeat, let candidate = candidates.first(where: { $0.0.matchesKeyDown(event) }) {
+                beginPending(mode: candidate.1, shortcut: candidate.0)
+            }
 
         case .active(_, let shortcut):
             if !shortcut.isMouseButton,
@@ -232,9 +251,9 @@ final class HotkeyMonitor {
                 onAbort?()
             }
 
-        case .latched(_, let shortcut):
-            if !shortcut.isModifierOnly, !event.isARepeat, shortcut.matchesKeyDown(event) {
-                state = .idle
+        case .latched(let mode, let shortcut):
+            if !event.isARepeat, let finishing = stoppingShortcuts(for: mode, startedWith: shortcut).first(where: { $0.matchesKeyDown(event) }) {
+                state = .releasing(shortcut: finishing)
                 onCommit?()
                 return
             }
@@ -243,10 +262,12 @@ final class HotkeyMonitor {
                 state = .idle
                 onAbort?()
             }
+        case .releasing:
+            return
         }
     }
 
-    private func handleKeyUp(_ event: NSEvent) {
+    func handleKeyUp(_ event: NSEvent) {
         switch state {
         case .pending(let mode, let shortcut):
             guard !shortcut.isMouseButton,
@@ -261,12 +282,17 @@ final class HotkeyMonitor {
             state = .idle
             onCommit?()
 
+        case .releasing(let shortcut):
+            if !shortcut.isMouseButton, !shortcut.isModifierOnly, event.keyCode == shortcut.keyCode {
+                state = .idle
+            }
+
         case .idle, .latched:
             return
         }
     }
 
-    private func handleMouseDown(_ event: NSEvent) {
+    func handleMouseDown(_ event: NSEvent) {
         switch state {
         case .idle:
             for (shortcut, mode) in candidates where shortcut.matchesMouseButton(event) {
@@ -286,15 +312,18 @@ final class HotkeyMonitor {
             state = .idle
             onAbort?()
 
-        case .latched(_, let shortcut):
-            if shortcut.matchesMouseButton(event) {
-                state = .idle
+        case .latched(let mode, let shortcut):
+            if let finishing = stoppingShortcuts(for: mode, startedWith: shortcut).first(where: { $0.matchesMouseButton(event) }) {
+                state = .releasing(shortcut: finishing)
                 onCommit?()
             }
+
+        case .releasing:
+            return
         }
     }
 
-    private func handleMouseUp(_ event: NSEvent) {
+    func handleMouseUp(_ event: NSEvent) {
         switch state {
         case .pending(let mode, let shortcut):
             guard shortcut.matchesMouseButton(event) else { return }
@@ -305,6 +334,9 @@ final class HotkeyMonitor {
             state = .idle
             onCommit?()
 
+        case .releasing(let shortcut):
+            if shortcut.matchesMouseButton(event) { state = .idle }
+
         case .idle, .latched:
             return
         }
@@ -312,7 +344,7 @@ final class HotkeyMonitor {
 
     private func completeTap(mode: DictationMode, shortcut: HotkeyShortcut) {
         holdTimer?.cancel()
-        if ConfigStore.shared.config.tapToLockEnabled {
+        if configProvider().tapToLockEnabled {
             state = .latched(mode: mode, shortcut: shortcut)
             onBegin?(mode, true)
         } else {
@@ -323,7 +355,7 @@ final class HotkeyMonitor {
     private func beginPending(mode: DictationMode, shortcut: HotkeyShortcut) {
         holdTimer?.cancel()
         state = .pending(mode: mode, shortcut: shortcut)
-        let threshold = Double(ConfigStore.shared.config.holdThresholdMs) / 1000.0
+        let threshold = Double(configProvider().holdThresholdMs) / 1000.0
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             if case .pending(let mode, let shortcut) = self.state {

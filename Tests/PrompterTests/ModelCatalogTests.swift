@@ -3,12 +3,6 @@ import Testing
 
 @Suite("OpenRouter model catalog")
 struct ModelCatalogTests {
-    @Test("Includes GPT-4o Transcribe")
-    func gpt4oTranscribe() {
-        let choice = TranscriptionModelCatalog.choice(for: "openai/gpt-4o-transcribe")
-        #expect(choice?.name == "GPT-4o Transcribe")
-    }
-
     @Test("Includes current requested model IDs")
     func requestedModels() {
         let expected = [

@@ -3,9 +3,6 @@ import AVFoundation
 final class Recorder {
     private let engine = AVAudioEngine()
     private(set) var startTime: Date?
-    private var recordingFile: AVAudioFile?
-    private var recordingURL: URL?
-    private var didLogRecordingError = false
     /// Real microphones always carry noise-floor dither; a sustained run of
     /// exact digital zeros means a DSP unit or a revoked permission is muting
     /// the input, not a quiet room.
@@ -47,14 +44,6 @@ final class Recorder {
     func start() throws {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
-        let config = ConfigStore.shared.config
-        let cloudTranscriptionEnabled = config.useOpenRouterTranscription
-            && !config.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if cloudTranscriptionEnabled {
-            prepareCloudRecording(inputFormat: format)
-        } else {
-            discardRecording()
-        }
         nonSilentSampleSeen = false
         silentFrames = 0
         silenceReported = false
@@ -62,7 +51,6 @@ final class Recorder {
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, when in
             guard let self else { return }
             self.onBuffer?(buffer, when)
-            self.writeCloudRecording(buffer)
             self.emitLevels(buffer)
             self.trackSilence(buffer)
         }
@@ -90,62 +78,8 @@ final class Recorder {
         let duration = startTime.map { Date().timeIntervalSince($0) } ?? 0
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
-        // Releasing AVAudioFile flushes and finalizes the WAV header before the
-        // processing task reads it.
-        recordingFile = nil
         startTime = nil
         return duration
-    }
-
-    /// Transfers ownership of the completed temporary WAV to the caller.
-    func takeRecordingURL() -> URL? {
-        defer { recordingURL = nil }
-        return recordingURL
-    }
-
-    func discardRecording() {
-        recordingFile = nil
-        if let recordingURL {
-            try? FileManager.default.removeItem(at: recordingURL)
-        }
-        recordingURL = nil
-    }
-
-    /// Capture the exact native mic buffers as a WAV alongside Apple's live
-    /// analyzer. Avoid resampling on the real-time audio thread: on some input
-    /// formats AVAudioConverter produced a correctly timed but silent file.
-    private func prepareCloudRecording(inputFormat: AVAudioFormat) {
-        discardRecording()
-        didLogRecordingError = false
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("prompter-\(UUID().uuidString)")
-            .appendingPathExtension("wav")
-        do {
-            let file = try AVAudioFile(
-                forWriting: url,
-                settings: inputFormat.settings,
-                commonFormat: inputFormat.commonFormat,
-                interleaved: inputFormat.isInterleaved
-            )
-            recordingFile = file
-            recordingURL = url
-        } catch {
-            try? FileManager.default.removeItem(at: url)
-            Log.write("cloud recording setup failed; local STT remains available: \(error)")
-        }
-    }
-
-    /// Called only by AVAudioEngine's serial tap callback.
-    private func writeCloudRecording(_ buffer: AVAudioPCMBuffer) {
-        guard let file = recordingFile else { return }
-        do {
-            if buffer.frameLength > 0 { try file.write(from: buffer) }
-        } catch {
-            if !didLogRecordingError {
-                didLogRecordingError = true
-                Log.write("cloud recording write failed; local STT remains available: \(error)")
-            }
-        }
     }
 
     /// Called only by AVAudioEngine's serial tap callback.

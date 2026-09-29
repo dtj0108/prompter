@@ -24,7 +24,7 @@ To install:
 1. Unzip `Prompter.zip` and move `Prompter.app` to Applications.
 2. Open Prompter. If macOS blocks the first launch, right-click the app, choose **Open**, then confirm.
 3. Follow the Setup Assistant to sign in with Ambitious, then grant Microphone and Accessibility access.
-4. Add your OpenAI key in **Settings → AI models** for GPT Live Transcribe. Add OpenRouter separately if you want AI cleanup or Prompt Mode.
+4. On the **API keys** setup step, paste your OpenAI key and press **Test** — setup continues only once OpenAI confirms the key works. Add OpenRouter there too if you want AI cleanup or Prompt Mode. You can change either later in **Settings → API Keys**.
 
 After installation, Prompter can check for and install new releases from its Settings window.
 

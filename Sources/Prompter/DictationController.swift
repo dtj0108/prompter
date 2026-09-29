@@ -73,7 +73,7 @@ final class DictationController {
         }
         guard session == nil else { return }
         guard !OpenAICredentials.currentAPIKey().isEmpty else {
-            HUD.shared.flash(.failure("Add your OpenAI key in Settings → AI models"), for: 4)
+            HUD.shared.flash(.failure("Add your OpenAI key in Settings → API Keys"), for: 4)
             WindowRouter.shared.openSettings()
             return
         }
@@ -132,7 +132,8 @@ final class DictationController {
                 session = nil
                 recorder.stop()
                 recorder.onBuffer = nil
-                HUD.shared.flash(.failure("Couldn't start GPT Live Transcribe — check your key and connection"), for: 4)
+                let reason = (error as? OpenAIRealtimeTranscriptionError)?.popupMessage
+                HUD.shared.flash(.failure(reason ?? "Couldn't start GPT Live Transcribe — check your key and connection"), for: 5)
                 Log.write("dictation begin failed: \(error)")
                 hotkeys.resetState()
                 notifyAuthIfIdle()
@@ -173,10 +174,12 @@ final class DictationController {
                 current.engine.cancel()
                 current.liveText?.cancel()
                 Log.write("GPT Live Transcribe failed: \(error)")
-                let message = heardOnlySilence
+                // OpenAI's own reason (bad key, no credit…) beats every generic hint.
+                let reason = (error as? OpenAIRealtimeTranscriptionError)?.popupMessage
+                let message = reason ?? (heardOnlySilence
                     ? "No mic signal — recheck Microphone permission"
-                    : "GPT Live Transcribe failed — check your OpenAI key and connection"
-                HUD.shared.flash(.failure(message), for: 4)
+                    : "GPT Live Transcribe failed — check your OpenAI key and connection")
+                HUD.shared.flash(.failure(message), for: reason == nil ? 4 : 5)
                 return
             }
             let sttMs = Int(Date().timeIntervalSince(sttStart) * 1000)

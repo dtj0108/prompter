@@ -200,22 +200,25 @@ struct AmbitiousBlackButtonStyle: ButtonStyle {
 
 /// Outlined neutral button ("Create an Ambitious account").
 struct AmbitiousSecondaryButtonStyle: ButtonStyle {
+    var compact = false
+
     func makeBody(configuration: Configuration) -> some View {
-        StyledBody(configuration: configuration)
+        StyledBody(configuration: configuration, compact: compact)
     }
 
     private struct StyledBody: View {
         let configuration: Configuration
+        let compact: Bool
         @Environment(\.isEnabled) private var isEnabled
         @State private var hovered = false
 
         var body: some View {
             configuration.label
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: compact ? 14 : 16, weight: .semibold))
                 .foregroundStyle(AmbitiousDesign.text)
-                .padding(.horizontal, 16)
-                .frame(minHeight: 48)
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, compact ? 14 : 16)
+                .frame(minHeight: compact ? 36 : 48)
+                .frame(maxWidth: compact ? nil : .infinity)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.primary.opacity(hovered ? 0.05 : 0))

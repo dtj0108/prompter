@@ -50,8 +50,7 @@ struct OnboardingView: View {
     @State private var micRequesting = false
     @State private var axGranted = AXIsProcessTrusted()
     @State private var axRequesting = false
-    @State private var testResult = ""
-    @State private var testing = false
+    @ObservedObject private var keys = APIKeyVerifier.shared
     @State private var practiceText = ""
 
     @State private var keyMonitor: Any?
@@ -149,8 +148,8 @@ struct OnboardingView: View {
                         .keyboardShortcut(.defaultAction)
                         .transition(.opacity)
                 default:
-                    Button("Next") { advance() }
-                        .disabled(step == .aiEngine && OpenAICredentials.currentAPIKey().isEmpty)
+                    Button(step == .aiEngine && !keysReady ? "Test your OpenAI key to continue" : "Next") { advance() }
+                        .disabled(step == .aiEngine && !keysReady)
                         .buttonStyle(AmbitiousPrimaryButtonStyle())
                         .keyboardShortcut(.defaultAction)
                         .transition(.opacity)
@@ -184,7 +183,9 @@ struct OnboardingView: View {
 
     /// All step navigation funnels through here so the slide direction and
     /// animation stay consistent (and CLI renders stay instant).
-    private func goTo(_ target: OnboardingStep) {
+    private func goTo(_ requested: OnboardingStep) {
+        // Nobody reaches "Try it" without a key that has actually worked.
+        let target = requested.rawValue > OnboardingStep.aiEngine.rawValue && !keysReady ? .aiEngine : requested
         guard target != step else { return }
         slideForward = target.rawValue > step.rawValue
         if renderOnly {
@@ -194,7 +195,16 @@ struct OnboardingView: View {
         }
     }
 
+    /// The OpenAI key is required and must pass a live test; OpenRouter is
+    /// optional, but a key that was entered and failed must be fixed or cleared.
+    private var keysReady: Bool {
+        guard keys.isVerified(.openAI) else { return false }
+        if case .failed = keys.status(.openRouter) { return false }
+        return true
+    }
+
     private func finish() {
+        guard keysReady else { goTo(.aiEngine); return }
         store.config.onboardingDone = true
         returnToPrompter()
     }
@@ -723,64 +733,50 @@ struct OnboardingView: View {
 
     private var aiEngine: some View {
         Entrance(enabled: !renderOnly) { shown in
-            VStack(spacing: 24) {
-                AmbitiousIconCircle(symbol: "sparkles", diameter: 72, symbolSize: 28)
+            VStack(spacing: 22) {
+                AmbitiousIconCircle(symbol: "key.fill", diameter: 72, symbolSize: 28)
                     .popIn(shown)
-                screenText("Connect the AI",
-                           "GPT Live Transcribe is the speech model. Add your OpenAI key to transcribe your voice. An internet connection is required.",
-                           maxWidth: 440)
+                screenText("Add your API keys",
+                           "Paste your OpenAI key and press Test. Ambitious Prompts checks it with OpenAI right now, so you know dictation will work before you start.",
+                           maxWidth: 460)
                     .riseIn(shown, delay: 0.12)
 
-                VStack(spacing: 10) {
-                    SecureField("OpenAI API key (sk-proj-…)", text: $store.config.openAIKey)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 14))
-                        .padding(.horizontal, 12)
-                        .frame(height: 40)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(AmbitiousDesign.background))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(AmbitiousDesign.borderStrong, lineWidth: 1))
-                    HStack {
-                        Link("Manage OpenAI API keys", destination: URL(string: "https://platform.openai.com/settings/organization/api-keys")!)
-                            .font(.system(size: 13))
-                            .tint(AmbitiousDesign.brandPrimary)
-                            .clickCursor()
-                        Spacer()
-                        Text("$0.017/min")
-                            .font(.system(size: 12))
-                            .foregroundStyle(AmbitiousDesign.textTertiary)
-                    }
-
-                    SecureField("OpenRouter API key (sk-or-…)", text: $store.config.openRouterKey)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 14))
-                        .padding(.horizontal, 12)
-                        .frame(height: 40)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(AmbitiousDesign.background))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(AmbitiousDesign.borderStrong, lineWidth: 1))
-                    HStack(spacing: 10) {
-                        Link("Get a key at openrouter.ai/keys", destination: URL(string: "https://openrouter.ai/settings/keys")!)
-                            .font(.system(size: 13))
-                            .tint(AmbitiousDesign.brandPrimary)
-                            .clickCursor()
-                        Spacer()
-                        if !testResult.isEmpty {
-                            Text(testResult)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(testResult.hasPrefix("✓") ? AmbitiousDesign.success : AmbitiousDesign.error)
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        APIKeyField(title: "OpenAI", placeholder: "sk-proj-…", key: $store.config.openAIKey,
+                                    provider: .openAI, required: true)
+                        HStack {
+                            Text("Speech to text · about $0.017 per minute")
+                            Spacer()
+                            Link("Get a key", destination: URL(string: "https://platform.openai.com/settings/organization/api-keys")!)
+                                .foregroundStyle(AmbitiousDesign.brandPrimary)
+                                .clickCursor()
                         }
-                        Button(testing ? "Testing…" : "Test") { runTest() }
-                            .buttonStyle(AmbitiousPrimaryButtonStyle(compact: true))
-                            .disabled(testing || store.config.openRouterKey.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .font(.system(size: 12))
+                        .foregroundStyle(AmbitiousDesign.textTertiary)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        APIKeyField(title: "OpenRouter", placeholder: "sk-or-…", key: $store.config.openRouterKey,
+                                    provider: .openRouter)
+                        HStack {
+                            Text("AI cleanup and Prompt Mode · you can add it later")
+                            Spacer()
+                            Link("Get a key", destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                                .foregroundStyle(AmbitiousDesign.brandPrimary)
+                                .clickCursor()
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(AmbitiousDesign.textTertiary)
                     }
                 }
-                .frame(width: 360)
+                .frame(width: 460)
                 .riseIn(shown, delay: 0.22)
 
-                Text("OpenRouter is optional and powers text cleanup and Prompt Mode. Without an OpenRouter key, cleanup can use your Claude Code subscription (claude CLI) or Dictionary corrections. An OpenAI key is required for speech.")
+                Text("Keys stay on this Mac. You can change them anytime in Settings → API Keys.")
                     .font(.system(size: 12))
                     .foregroundStyle(AmbitiousDesign.textTertiary)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 420)
+                    .frame(maxWidth: 440)
                     .riseIn(shown, delay: 0.3)
             }
         }
@@ -885,30 +881,6 @@ struct OnboardingView: View {
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(AmbitiousDesign.brandPrimary)
             .clickCursor()
-    }
-
-    private func runTest() {
-        testing = true
-        testResult = ""
-        Task {
-            do {
-                let reply = try await LLMClient.shared.complete(
-                    system: "Reply with exactly: OK",
-                    user: "Say OK.",
-                    model: ConfigStore.shared.config.cleanupModel,
-                    timeout: 45
-                )
-                await MainActor.run {
-                    testResult = reply.text.contains("OK") ? "✓ Connected" : "✓ Replied"
-                    testing = false
-                }
-            } catch {
-                await MainActor.run {
-                    testResult = "✗ \(error.localizedDescription)"
-                    testing = false
-                }
-            }
-        }
     }
 }
 

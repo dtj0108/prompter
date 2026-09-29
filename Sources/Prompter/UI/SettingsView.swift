@@ -54,6 +54,33 @@ struct SettingsView: View {
                 }
             }
 
+            Section("API Keys") {
+                APIKeyField(title: "OpenAI", placeholder: "sk-proj-…", key: $store.config.openAIKey,
+                            provider: .openAI, required: true)
+                    .padding(.vertical, 4)
+                HStack {
+                    Text("Powers GPT Live Transcribe (\(OpenAIRealtimeTranscriber.defaultModel)). Your audio streams directly to OpenAI.")
+                    Spacer()
+                    Link("Get a key", destination: URL(string: "https://platform.openai.com/settings/organization/api-keys")!)
+                        .foregroundStyle(AmbitiousDesign.brandPrimary)
+                        .clickCursor()
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                APIKeyField(title: "OpenRouter", placeholder: "sk-or-…", key: $store.config.openRouterKey,
+                            provider: .openRouter)
+                    .padding(.vertical, 4)
+                HStack {
+                    Text("Powers AI cleanup and Prompt Mode. Skip it to use the claude CLI or Dictionary corrections.")
+                    Spacer()
+                    Link("Get a key", destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                        .foregroundStyle(AmbitiousDesign.brandPrimary)
+                        .clickCursor()
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                Text("Keys are stored only on this Mac. Test sends no audio and costs nothing.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Hotkeys") {
                 hotkeyGroup("Dictation", target: .dictation)
                 hotkeyGroup("Prompt Mode", target: .prompt)
@@ -74,18 +101,11 @@ struct SettingsView: View {
             }
 
             Section("AI models") {
-                SecureField("OpenAI API key (sk-proj-…)", text: $store.config.openAIKey)
                 LabeledContent("Transcription model", value: OpenAIRealtimeTranscriber.defaultModel)
-                Text("GPT Live Transcribe is the only speech model. An OpenAI key and internet connection are required. Microphone audio streams directly to OpenAI.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Link("Manage OpenAI API keys", destination: URL(string: "https://platform.openai.com/settings/organization/api-keys")!)
-                    .font(.caption)
-                    .clickCursor()
 
                 Toggle("Clean up dictation with AI", isOn: $store.config.llmCleanupEnabled).clickCursor()
                 Text("Off = raw transcript with dictionary corrections only.")
                     .font(.caption).foregroundStyle(.secondary)
-                SecureField("OpenRouter API key (sk-or-…)", text: $store.config.openRouterKey)
                 Picker("Cleanup model", selection: $store.config.openRouterCleanupModel) {
                     ForEach(AIModelCatalog.choices) { choice in
                         Text("\(choice.name) — \(choice.detail)").tag(choice.id)
@@ -114,9 +134,6 @@ struct SettingsView: View {
                     TextField("Prompt Mode model ID", text: $store.config.openRouterModel)
                         .textFieldStyle(.roundedBorder)
                 }
-                Link("Get a key at openrouter.ai/keys", destination: URL(string: "https://openrouter.ai/settings/keys")!)
-                    .font(.caption)
-                    .clickCursor()
                 Text("“:free” models may be request-limited and may let the provider train on your text.")
                     .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Cleanup / Prompt Mode", value: LLMClient.shared.backendDescription)

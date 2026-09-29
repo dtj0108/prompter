@@ -92,3 +92,55 @@ struct OpenAIRealtimeTranscriberTests {
         engine.handleServerEvent(try! JSONSerialization.data(withJSONObject: event))
     }
 }
+
+@Suite("API key errors")
+struct APIKeyErrorTests {
+    @Test("OpenAI error codes become short, fixable pop-up messages")
+    func explainsCodes() {
+        let explain = OpenAIRealtimeTranscriptionError.explain
+        #expect(explain("invalid_api_key", "Incorrect API key provided: sk-abc123").contains("rejected this key"))
+        #expect(explain("insufficient_quota", "You exceeded your current quota").contains("out of credit"))
+        #expect(explain("model_not_found", nil).contains(OpenAIRealtimeTranscriber.defaultModel))
+        #expect(explain(nil, "You have insufficient permissions for this operation. Missing scopes: api.model.audio.request").contains("restricted"))
+        #expect(explain("rate_limit_exceeded", nil).contains("rate limit"))
+    }
+
+    @Test("Unknown OpenAI errors keep OpenAI's words, never a key, and stay short")
+    func unknownErrors() {
+        let message = OpenAIRealtimeTranscriptionError.explain(
+            code: "something_new",
+            message: "Key sk-proj-SECRETSECRETSECRET hit a brand new failure mode that has a very long explanation attached"
+        )
+        #expect(message.hasPrefix("OpenAI: "))
+        #expect(!message.contains("SECRET"))
+        #expect(message.count <= 72)
+        #expect(OpenAIRealtimeTranscriptionError.explain(code: nil, message: nil) == "OpenAI couldn't start GPT Live Transcribe")
+    }
+
+    @Test("Only specific reasons replace the generic dictation hint")
+    func popupMessages() {
+        #expect(OpenAIRealtimeTranscriptionError.openAIRejected(code: "insufficient_quota", message: nil).popupMessage != nil)
+        #expect(OpenAIRealtimeTranscriptionError.unreachable.popupMessage != nil)
+        #expect(OpenAIRealtimeTranscriptionError.timeout.popupMessage == nil)
+        #expect(OpenAIRealtimeTranscriptionError.apiFailed("x").popupMessage == nil)
+    }
+
+    @Test("A rejected session surfaces OpenAI's reason when dictation finishes")
+    func rejectedSessionReason() async {
+        let engine = OpenAIRealtimeTranscriber()
+        engine.handleServerEvent(Data(#"{"type":"error","error":{"code":"insufficient_quota","message":"You exceeded your current quota"}}"#.utf8))
+        do {
+            _ = try await engine.finishResult()
+            Issue.record("expected a failure")
+        } catch {
+            #expect((error as? OpenAIRealtimeTranscriptionError)?.popupMessage?.contains("out of credit") == true)
+        }
+    }
+
+    @Test("OpenRouter key check statuses")
+    func openRouterStatuses() {
+        #expect(APIKeyVerifier.openRouterMessage(status: 200) == nil)
+        #expect(APIKeyVerifier.openRouterMessage(status: 401)?.contains("rejected") == true)
+        #expect(APIKeyVerifier.openRouterMessage(status: 402)?.contains("credit") == true)
+    }
+}

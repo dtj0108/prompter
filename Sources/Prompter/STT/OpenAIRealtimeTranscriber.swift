@@ -11,6 +11,9 @@ enum OpenAIRealtimeTranscriptionError: Error, LocalizedError {
     case missingAPIKey
     case invalidAudioFormat
     case apiFailed(String)
+    /// OpenAI refused the request and said why (bad key, no credit, no model access…).
+    case openAIRejected(code: String?, message: String?)
+    case unreachable
     case emptyResponse
     case timeout
 
@@ -22,11 +25,56 @@ enum OpenAIRealtimeTranscriptionError: Error, LocalizedError {
             return "The microphone audio could not be converted for GPT Live Transcribe."
         case .apiFailed(let message):
             return message
+        case .openAIRejected(let code, let message):
+            return OpenAIRealtimeTranscriptionError.explain(code: code, message: message)
+        case .unreachable:
+            return "Can't reach OpenAI — check your internet connection"
         case .emptyResponse:
             return "GPT Live Transcribe returned no text."
         case .timeout:
             return "GPT Live Transcribe took too long to finalize."
         }
+    }
+
+    /// The specific reason to show the user, or nil when only a generic hint fits.
+    var popupMessage: String? {
+        switch self {
+        case .openAIRejected, .unreachable, .missingAPIKey: return errorDescription
+        default: return nil
+        }
+    }
+
+    /// Turns OpenAI's error into one short line (it must fit the 480pt HUD) that
+    /// says what to fix. Unknown errors keep OpenAI's own words, minus any key.
+    static func explain(code: String?, message: String?) -> String {
+        let text = (message ?? "").lowercased()
+        switch code {
+        case "invalid_api_key":
+            return "OpenAI rejected this key — paste it again in Settings → API Keys"
+        case "insufficient_quota":
+            return "OpenAI account is out of credit — add billing at platform.openai.com"
+        case "model_not_found":
+            return "This OpenAI project can't use \(OpenAIRealtimeTranscriber.defaultModel) — check its limits"
+        case "rate_limit_exceeded":
+            return "OpenAI rate limit reached — wait a moment and try again"
+        default:
+            break
+        }
+        if text.contains("insufficient permissions") || text.contains("missing scopes") {
+            return "This OpenAI key is restricted — create one with All permissions"
+        }
+        if text.contains("does not have access to model") || text.contains("does not exist") {
+            return "This OpenAI project can't use \(OpenAIRealtimeTranscriber.defaultModel) — check its limits"
+        }
+        if text.contains("incorrect api key") {
+            return "OpenAI rejected this key — paste it again in Settings → API Keys"
+        }
+        let cleaned = (message ?? "")
+            .replacingOccurrences(of: #"sk-[A-Za-z0-9_*.-]+"#, with: "sk-…", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return "OpenAI couldn't start GPT Live Transcribe" }
+        let limit = 64
+        return "OpenAI: " + (cleaned.count > limit ? cleaned.prefix(limit - 1) + "…" : cleaned)
     }
 }
 
@@ -180,12 +228,7 @@ final class OpenAIRealtimeTranscriber: @unchecked Sendable {
         guard !key.isEmpty else { throw OpenAIRealtimeTranscriptionError.missingAPIKey }
         resetState()
 
-        var components = URLComponents(string: "wss://api.openai.com/v1/realtime")!
-        components.queryItems = [URLQueryItem(name: "intent", value: "transcription")]
-        var request = URLRequest(url: components.url!)
-        request.timeoutInterval = 20
-        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        let socket = URLSession.shared.webSocketTask(with: request)
+        let socket = URLSession.shared.webSocketTask(with: Self.realtimeRequest(key: key))
         self.socket = socket
         self.sender = SerialWebSocketSender(socket: socket) { [weak self] error in
             self?.recordTerminalError(error)
@@ -193,14 +236,26 @@ final class OpenAIRealtimeTranscriber: @unchecked Sendable {
         socket.resume()
         startReceiving(from: socket)
 
-        let keywords = Self.contextKeywords()
+        try enqueue(Self.sessionUpdateEvent(lowLatency: lowLatency, keywords: Self.contextKeywords()))
+    }
+
+    private static func realtimeRequest(key: String) -> URLRequest {
+        var components = URLComponents(string: "wss://api.openai.com/v1/realtime")!
+        components.queryItems = [URLQueryItem(name: "intent", value: "transcription")]
+        var request = URLRequest(url: components.url!)
+        request.timeoutInterval = 20
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    private static func sessionUpdateEvent(lowLatency: Bool, keywords: [String]) -> [String: Any] {
         var transcription: [String: Any] = [
-            "model": Self.defaultModel,
+            "model": defaultModel,
             "languages": ["en"],
             "delay": lowLatency ? "low" : "medium",
         ]
         if !keywords.isEmpty { transcription["keywords"] = keywords }
-        let event: [String: Any] = [
+        return [
             "type": "session.update",
             "session": [
                 "type": "transcription",
@@ -213,7 +268,65 @@ final class OpenAIRealtimeTranscriber: @unchecked Sendable {
                 ],
             ],
         ]
-        try enqueue(event)
+    }
+
+    /// Proves a key can open a GPT Live Transcribe session: connects exactly as
+    /// dictation does and sends the same session setup, but no audio, so it costs
+    /// nothing. Returns nil on success, or the reason to show the user.
+    static func checkKey(_ rawKey: String) async -> String? {
+        let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return OpenAIRealtimeTranscriptionError.missingAPIKey.errorDescription }
+        let socket = URLSession.shared.webSocketTask(with: realtimeRequest(key: key))
+        socket.resume()
+        defer { socket.cancel(with: .normalClosure, reason: nil) }
+        do {
+            let setup = try JSONSerialization.data(withJSONObject: sessionUpdateEvent(lowLatency: false, keywords: []))
+            try await socket.send(.string(String(decoding: setup, as: UTF8.self)))
+        } catch {
+            return describe(error)
+        }
+        return await withTaskGroup(of: String??.self) { group in
+            group.addTask {
+                while true {
+                    let message: URLSessionWebSocketTask.Message
+                    do { message = try await socket.receive() } catch { return .some(describe(error)) }
+                    let data: Data
+                    switch message {
+                    case .data(let bytes): data = bytes
+                    case .string(let text): data = Data(text.utf8)
+                    @unknown default: continue
+                    }
+                    guard let event = try? JSONDecoder().decode(ServerEvent.self, from: data) else { continue }
+                    if event.type == "error" {
+                        return .some(OpenAIRealtimeTranscriptionError.explain(
+                            code: event.error?.code, message: event.error?.message
+                        ))
+                    }
+                    // OpenAI confirms the transcription setup (model included) was accepted.
+                    if event.type.hasSuffix(".updated") { return .some(nil) }
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(12))
+                return .some("OpenAI didn't answer — check your internet connection")
+            }
+            let first = await group.next() ?? .some("OpenAI didn't answer — check your internet connection")
+            group.cancelAll()
+            socket.cancel(with: .normalClosure, reason: nil)
+            return first ?? nil
+        }
+    }
+
+    private static func describe(_ error: Error) -> String {
+        if let urlError = error as? URLError, Self.isOffline(urlError) {
+            return OpenAIRealtimeTranscriptionError.unreachable.errorDescription!
+        }
+        return "Couldn't connect to OpenAI: \(error.localizedDescription)"
+    }
+
+    private static func isOffline(_ error: URLError) -> Bool {
+        [.notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost,
+         .dnsLookupFailed, .timedOut, .dataNotAllowed, .internationalRoamingOff].contains(error.code)
     }
 
     func feed(_ buffer: AVAudioPCMBuffer) {
@@ -382,9 +495,11 @@ final class OpenAIRealtimeTranscriber: @unchecked Sendable {
     func handleServerEvent(_ data: Data) {
         guard let event = try? JSONDecoder().decode(ServerEvent.self, from: data) else { return }
         if event.type == "error" || event.type == "conversation.item.input_audio_transcription.failed" {
-            recordTerminalError(OpenAIRealtimeTranscriptionError.apiFailed(
-                event.error?.message ?? "GPT Live Transcribe could not finish transcription."
-            ))
+            recordTerminalError(event.type == "error"
+                ? OpenAIRealtimeTranscriptionError.openAIRejected(code: event.error?.code, message: event.error?.message)
+                : OpenAIRealtimeTranscriptionError.apiFailed(
+                    event.error?.message ?? "GPT Live Transcribe could not finish transcription."
+                ))
             return
         }
         let isDelta = event.type == "conversation.item.input_audio_transcription.delta"
@@ -448,6 +563,7 @@ final class OpenAIRealtimeTranscriber: @unchecked Sendable {
     private func normalize(_ error: Error) -> Error {
         if error is OpenAIRealtimeTranscriptionError { return error }
         if let urlError = error as? URLError {
+            if Self.isOffline(urlError) { return OpenAIRealtimeTranscriptionError.unreachable }
             return OpenAIRealtimeTranscriptionError.apiFailed(
                 "OpenAI Realtime connection failed: \(urlError.localizedDescription)"
             )

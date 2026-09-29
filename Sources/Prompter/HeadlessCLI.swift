@@ -133,6 +133,19 @@ enum HeadlessCLI {
             return true
 
 #if DEBUG
+        case "--test-openai-key":
+            // Same check as Settings → API Keys → Test. Uses the saved key unless one is given.
+            let key = args.count >= 3 ? args[2] : OpenAICredentials.currentAPIKey()
+            runBlocking {
+                if let failure = await OpenAIRealtimeTranscriber.checkKey(key) {
+                    print(failure)
+                    exitCode = 1
+                } else {
+                    print("OPENAI KEY OK")
+                }
+            }
+            return true
+
         case "--test-live-insertion":
             exitCode = LiveTextSession.verifyFixture() ? 0 : 1
             return true

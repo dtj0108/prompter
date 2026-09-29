@@ -227,6 +227,7 @@ struct HUDView: View {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
                 Text(message)
                     .font(.system(size: 12, weight: .medium))
+                    .lineLimit(2)
                     .foregroundStyle(.white.opacity(0.92))
             }
         }
